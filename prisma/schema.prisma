@@ -12,3 +12,172 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+/*
+  MEMBER
+  - Needed for: registration, profile management, health history, dashboard,
+    PT session scheduling, group class registration.
+*/
+model Member {
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  email              String              @unique
+  phone              String?
+  dateOfBirth        DateTime?
+
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  // Relations
+  healthMetrics      HealthMetric[]
+  ptSessions         Session[]
+  classRegistrations ClassRegistration[]
+}
+
+/*
+  TRAINER
+  - Needed for: trainer availability, PT sessions, teaching group classes,
+    schedule view (based on sessions + classes).
+*/
+model Trainer {
+  id                  Int                   @id @default(autoincrement())
+  name                String
+  email               String                @unique
+  phone               String?
+
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  // Relations
+  availabilities      TrainerAvailability[]
+  ptSessions          Session[]
+  fitnessClasses      FitnessClass[]
+}
+
+/*
+  ADMIN STAFF
+  - Needed for: room booking (via assigning rooms to sessions/classes),
+    class management (creating/updating FitnessClass rows).
+  - They don't "own" rooms or classes in the schema; they just manipulate them.
+*/
+model AdminStaff {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
+
+/*
+  ROOM
+  - Needed for: Room Booking (Admin chooses a room when creating or editing
+    a PT Session or Fitness Class).
+  - Also lets you prevent double-booking rooms by checking conflicts in app logic.
+*/
+model Room {
+  id             Int             @id @default(autoincrement())
+  name           String
+  capacity       Int
+
+  // Relations
+  ptSessions     Session[]
+  fitnessClasses FitnessClass[]
+}
+
+/*
+  HEALTH METRIC
+  - Needed for: Health History & Member Dashboard
+  - Minimal, generic design: each row is a single metric reading for a member.
+*/
+model HealthMetric {
+  id         Int      @id @default(autoincrement())
+  memberId   Int
+  recordedAt DateTime @default(now())
+  metricType String   // e.g. "WEIGHT", "HEART_RATE"
+  value      Float    // numeric value
+  unit       String?  // e.g. "kg", "bpm", "%"
+
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId, recordedAt])
+}
+
+/*
+  TRAINER AVAILABILITY
+  - Needed for: Trainer "Set availability" and validating PT session booking time.
+  - Each row is a single continuous availability slot.
+*/
+model TrainerAvailability {
+  id        Int      @id @default(autoincrement())
+  trainerId Int
+  startTime DateTime
+  endTime   DateTime
+
+  trainer   Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId, startTime, endTime])
+}
+
+/*
+  SESSION (PERSONAL TRAINING SESSION)
+  - Needed for: PT session scheduling (member + trainer + room + time),
+    and trainer schedule view.
+*/
+model Session {
+  id         Int      @id @default(autoincrement())
+  memberId   Int
+  trainerId  Int
+  roomId     Int?
+  startTime  DateTime
+  endTime    DateTime
+
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  trainer    Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  room       Room?    @relation(fields: [roomId], references: [id])
+
+  @@index([trainerId, startTime, endTime])
+  @@index([roomId, startTime, endTime])
+}
+
+/*
+  FITNESS CLASS
+  - This represents a scheduled group class (time + trainer + room + capacity).
+  - Needed for: Class Management (Admin), Group Class Registration (Member),
+    Trainer schedule view, Room booking for classes.
+*/
+model FitnessClass {
+  id         Int      @id @default(autoincrement())
+  name       String
+  trainerId  Int
+  roomId     Int
+  startTime  DateTime
+  endTime    DateTime
+  capacity   Int
+
+  trainer    Trainer               @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  room       Room                  @relation(fields: [roomId], references: [id])
+  // Relations
+  registrations ClassRegistration[]
+
+  @@index([trainerId, startTime, endTime])
+  @@index([roomId, startTime, endTime])
+}
+
+/*
+  CLASS REGISTRATION
+  - Join table: Member ↔ FitnessClass
+  - Needed for: Group class registration and counting how many members are in a class
+    (to enforce capacity in your app logic).
+*/
+model ClassRegistration {
+  id             Int          @id @default(autoincrement())
+  memberId       Int
+  fitnessClassId Int
+  registeredAt   DateTime     @default(now())
+
+  member         Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  fitnessClass   FitnessClass @relation(fields: [fitnessClassId], references: [id], onDelete: Cascade)
+
+  // Prevent the same member from registering for the same class twice
+  @@unique([memberId, fitnessClassId])
+  @@index([fitnessClassId])
+}
