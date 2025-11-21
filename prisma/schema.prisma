@@ -29,8 +29,10 @@ model Member {
 
   // Relations
   healthMetrics      HealthMetric[]
+  fitnessGoals       FitnessGoals[]
   ptSessions         Session[]
   classRegistrations ClassRegistration[]
+  pastClassCount     Int?   //past classes attended
 }
 
 /*
@@ -53,6 +55,18 @@ model Trainer {
   fitnessClasses      FitnessClass[]
 }
 
+model FitnessGoals {
+  id         Int      @id @default(autoincrement())
+  memberId   Int
+  recordedAt DateTime @default(now())
+  active     Boolean  //indicates 
+  
+  value      String   //thats the actual goal    
+
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId, recordedAt])
+}
 /*
   ADMIN STAFF
   - Needed for: room booking (via assigning rooms to sessions/classes),
