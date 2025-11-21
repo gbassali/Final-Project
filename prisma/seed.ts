@@ -25,13 +25,11 @@ async function main() {
   const admin1 = await prisma.adminStaff.create({
     data: {
       name: 'Sarah Johnson',
-      email: 'sarah.johnson@fitness.com',
     },
   });
   const admin2 = await prisma.adminStaff.create({
     data: {
       name: 'Michael Chen',
-      email: 'michael.chen@fitness.com',
     },
   });
 
@@ -83,29 +81,21 @@ async function main() {
   const trainer1 = await prisma.trainer.create({
     data: {
       name: 'Alex Martinez',
-      email: 'alex.martinez@fitness.com',
-      phone: '555-0101',
     },
   });
   const trainer2 = await prisma.trainer.create({
     data: {
       name: 'Jordan Smith',
-      email: 'jordan.smith@fitness.com',
-      phone: '555-0102',
     },
   });
   const trainer3 = await prisma.trainer.create({
     data: {
       name: 'Taylor Brown',
-      email: 'taylor.brown@fitness.com',
-      phone: '555-0103',
     },
   });
   const trainer4 = await prisma.trainer.create({
     data: {
       name: 'Casey Williams',
-      email: 'casey.williams@fitness.com',
-      phone: '555-0104',
     },
   });
 
