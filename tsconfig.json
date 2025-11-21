@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "rootDir": "./",           // or "./app" if you only compile app
+    "outDir": "./dist",
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "sourceMap": true
+  },
+  "include": ["app/**/*.ts", "models/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
