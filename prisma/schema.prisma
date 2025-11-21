@@ -7,10 +7,12 @@
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
+  engineType = "binary"
 }
 
 datasource db {
   provider = "postgresql"
+  url = "postgresql://postgres:Bigtree@1234@localhost:5432/postgres"
 }
 
 /*
