@@ -24,7 +24,6 @@ model Member {
   email              String              @unique
   phone              String?
   dateOfBirth        DateTime?
-
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
@@ -123,8 +122,15 @@ model HealthMetric {
 model TrainerAvailability {
   id        Int      @id @default(autoincrement())
   trainerId Int
-  startTime DateTime
-  endTime   DateTime
+  type      AvailabilityType
+  
+  // used when type = ONE_TIME
+  startDateTime DateTime?
+  endDateTime   DateTime?
+  // used when type = WEEKLY
+  dayOfWeek   Int?           // 0 = Sunday, 1 = Monday, ... 6 = Saturday
+  startTime   DateTime?      @db.Time // time-of-day only (Postgres TIME)
+  endTime     DateTime?      @db.Time // time-of-day only (Postgres TIME)
 
   trainer   Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
 
@@ -194,4 +200,9 @@ model ClassRegistration {
   // Prevent the same member from registering for the same class twice
   @@unique([memberId, fitnessClassId])
   @@index([fitnessClassId])
+}
+
+enum AvailabilityType {
+  ONE_TIME
+  WEEKLY
 }
