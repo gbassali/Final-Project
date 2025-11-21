@@ -12,7 +12,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = "postgresql://postgres:Bigtree@1234@localhost:5432/postgres"
+  url = "postgresql://postgres:postgres@gkaurB2004!@localhost:5432/COMP3005FinalProject"
 }
 
 /*
