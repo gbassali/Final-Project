@@ -23,9 +23,7 @@ export async function getMemberByEmail(email: string): Promise<Member | null> {
 }
 
 export async function listMembers(): Promise<Member[]> {
-  return prisma.member.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  return prisma.member.findMany({});
 }
 
 export async function updateMember(id: number, data: UpdateMemberInput): Promise<Member> {
