@@ -4,31 +4,33 @@ import { HealthMetric, Prisma } from "../generated/prisma/client";
 export type CreateHealthMetricInput = Prisma.HealthMetricCreateInput;
 export type UpdateHealthMetricInput = Prisma.HealthMetricUpdateInput;
 
-export async function createHealthMetric(
-  input: CreateHealthMetricInput
-): Promise<HealthMetric> {
-  return prisma.healthMetric.create({ data: input });
+// export async function createHealthMetric(
+//   input: CreateHealthMetricInput
+// ): Promise<HealthMetric> {
+//   return prisma.healthMetric.create({ data: input });
+// }
+export async function createHealthMetricForMember(memberId: number, data: CreateHealthMetricInput): Promise<HealthMetric> {
+  const createData = {
+    ...data,
+    member: {
+      connect: { id: memberId },
+    },
+  };
+  return prisma.healthMetric.create({ data: createData });
 }
 
-export async function getHealthMetricById(
-  id: number
-): Promise<HealthMetric | null> {
+export async function getHealthMetricById(id: number): Promise<HealthMetric | null> {
   return prisma.healthMetric.findUnique({ where: { id } });
 }
 
-export async function listHealthMetricsForMember(
-  memberId: number
-): Promise<HealthMetric[]> {
+export async function getHealthMetricsForMember(memberId: number): Promise<HealthMetric[]> {
   return prisma.healthMetric.findMany({
     where: { memberId },
     orderBy: { recordedAt: "desc" },
   });
 }
 
-export async function updateHealthMetric(
-  id: number,
-  data: UpdateHealthMetricInput
-): Promise<HealthMetric> {
+export async function updateHealthMetric(id: number, data: UpdateHealthMetricInput): Promise<HealthMetric> {
   return prisma.healthMetric.update({
     where: { id },
     data,
