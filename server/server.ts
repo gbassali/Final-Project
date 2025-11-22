@@ -16,8 +16,9 @@ app.get('/health', (_req, res) => {
 app.use('/api/members', memberRoutes);
 
 app.use(
-  (err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    res.status(500).json({ error: err.message || 'Internal server error' });
+  (err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {
+    const status = typeof err.status === 'number' ? err.status : 500;
+    res.status(status).json({ error: err.message || 'Internal server error' });
   }
 );
 

@@ -1,7 +1,12 @@
 import prisma from "./prismaClient";
 import { HealthMetric, Prisma } from "../generated/prisma/client";
 
-export type CreateHealthMetricInput = Prisma.HealthMetricCreateInput;
+export type CreateHealthMetricInput = {
+  metricType: string;
+  value: number;
+  unit?: string | null;
+  recordedAt?: Date;
+};
 export type UpdateHealthMetricInput = Prisma.HealthMetricUpdateInput;
 
 // export async function createHealthMetric(
@@ -10,13 +15,17 @@ export type UpdateHealthMetricInput = Prisma.HealthMetricUpdateInput;
 //   return prisma.healthMetric.create({ data: input });
 // }
 export async function createHealthMetricForMember(memberId: number, data: CreateHealthMetricInput): Promise<HealthMetric> {
-  const createData = {
-    ...data,
-    member: {
-      connect: { id: memberId },
+  return prisma.healthMetric.create({
+    data: {
+      metricType: data.metricType,
+      value: data.value,
+      unit: data.unit ?? null,
+      recordedAt: data.recordedAt,
+      member: {
+        connect: { id: memberId },
+      },
     },
-  };
-  return prisma.healthMetric.create({ data: createData });
+  });
 }
 
 export async function getHealthMetricById(id: number): Promise<HealthMetric | null> {

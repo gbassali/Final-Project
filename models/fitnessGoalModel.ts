@@ -1,7 +1,11 @@
 import prisma from "./prismaClient";
 import { FitnessGoals, Prisma } from "../generated/prisma/client";
 
-export type CreateFitnessGoalsInput = Prisma.FitnessGoalsCreateInput;
+export type CreateFitnessGoalsInput = {
+  value: string;
+  active?: boolean;
+  recordedAt?: Date;
+};
 export type UpdateFitnessGoalsInput = Prisma.FitnessGoalsUpdateInput;
 
 // export async function createFitnessGoal(
@@ -11,14 +15,16 @@ export type UpdateFitnessGoalsInput = Prisma.FitnessGoalsUpdateInput;
 // }
 
 export async function createFitnessGoalForMember(memberId: number, data: CreateFitnessGoalsInput): Promise<FitnessGoals> {
-  const createData = {
-    ...data,
-    member: {
-      connect: { id: memberId },
+  return prisma.fitnessGoals.create({
+    data: {
+      value: data.value,
+      active: data.active ?? true,
+      recordedAt: data.recordedAt,
+      member: {
+        connect: { id: memberId },
+      },
     },
-  };
-
-  return prisma.fitnessGoals.create({ data: createData });
+  });
 }
 
 export async function getFitnessGoalById(id: number): Promise<FitnessGoals | null> {
