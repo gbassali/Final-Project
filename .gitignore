@@ -1,2 +1,15 @@
 /node_modules
 /generated/prisma
+
+# Build outputs
+/dist
+/frontend/dist
+
+# Frontend dependencies
+/frontend/node_modules
+
+# Environment files
+.env
+.env.local
+/frontend/.env
+/frontend/.env.local
