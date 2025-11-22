@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "sourceMap": true
   },
-  "include": ["app/**/*.ts", "models/**/*.ts"],
+  "include": ["app/**/*.ts", "models/**/*.ts", "server/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
