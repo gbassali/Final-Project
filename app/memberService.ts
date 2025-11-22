@@ -9,7 +9,5 @@ export async function registerMember(data: Prisma.MemberCreateInput): Promise<Me
       throw new Error(`Email ${data.email} is already in use.`);
     }
   }
-
-  // Directly pass input to Prisma
   return createMember(data);
 }

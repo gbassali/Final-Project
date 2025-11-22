@@ -59,7 +59,6 @@ model FitnessGoals {
   memberId   Int
   recordedAt DateTime @default(now())
   active     Boolean  //indicates 
-  
   value      String   //thats the actual goal    
 
   member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
