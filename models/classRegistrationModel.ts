@@ -1,5 +1,5 @@
 import prisma from "./prismaClient";
-import { ClassRegistration, Prisma } from "../generated/prisma/client";
+import { ClassRegistration, FitnessClass, Prisma } from "../generated/prisma/client";
 
 export type CreateClassRegistrationInput = Prisma.ClassRegistrationCreateInput;
 export type UpdateClassRegistrationInput = Prisma.ClassRegistrationUpdateInput;
@@ -48,4 +48,20 @@ export async function deleteClassRegistration(
   id: number
 ): Promise<ClassRegistration> {
   return prisma.classRegistration.delete({ where: { id } });
+}
+
+export async function listRegistrationsForMemberWithFitnessClass(
+  memberId: number
+): Promise<(ClassRegistration & { fitnessClass: FitnessClass })[]> {
+  return prisma.classRegistration.findMany({
+    where: { memberId },
+    include: {
+      fitnessClass: true,
+    },
+    orderBy: {
+      fitnessClass: {
+        startTime: "asc",
+      },
+    },
+  });
 }
