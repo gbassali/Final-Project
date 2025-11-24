@@ -57,6 +57,11 @@ main {
   flex-direction: column;
   gap: 1rem;
 }
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
 .tabs {
   display: flex;
   gap: 0.75rem;

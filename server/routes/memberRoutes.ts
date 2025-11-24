@@ -16,8 +16,21 @@ import {
 } from '../../models/memberModel';
 import { CreateFitnessGoalsInput } from '../../models/fitnessGoalModel';
 import { CreateHealthMetricInput } from '../../models/healthMetricModel';
+import { requireAuth } from './authRoutes';
 
 const router = Router();
+
+router.post('/', async (req, res, next) => {
+  try {
+    const data = buildMemberCreateInput(req.body);
+    const member = await registerMember(data);
+    res.status(201).json(member);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.use(requireAuth);
 
 router.get('/', async (_req, res, next) => {
   try {
@@ -37,16 +50,6 @@ router.get('/:memberId', async (req, res, next) => {
       return;
     }
     res.json(member);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.post('/', async (req, res, next) => {
-  try {
-    const data = buildMemberCreateInput(req.body);
-    const member = await registerMember(data);
-    res.status(201).json(member);
   } catch (error) {
     next(error);
   }

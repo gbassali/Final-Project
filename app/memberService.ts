@@ -11,3 +11,14 @@ export async function registerMember(data: Prisma.MemberCreateInput): Promise<Me
   }
   return createMember(data);
 }
+
+export async function authenticateMember(
+  email: string,
+  password: string
+): Promise<Member> {
+  const member = await getMemberByEmail(email);
+  if (!member || member.password !== password) {
+    throw new Error("Invalid email or password");
+  }
+  return member;
+}
