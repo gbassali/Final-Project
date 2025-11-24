@@ -1,0 +1,288 @@
+import { Session, TrainerAvailability, AvailabilityType } from "../generated/prisma/client";
+import { createSession, getSessionById, listSessionsForMember, listSessionsForTrainer, updateSession } from "../models/sessionModel";
+import prisma from "../models/prismaClient";
+import { listTrainerAvailabilitiesForTrainer } from "../models/trainerAvailabilityModel";
+import { listRegistrationsForMemberWithFitnessClass } from "../models/classRegistrationModel";
+import { getMemberById } from "../models/memberModel";
+import { getTrainerById } from "../models/trainerModel";
+import { getRoomById } from "../models/roomModel";
+
+
+export interface BookPtSessionInput {
+  memberId: number;
+  trainerId: number;
+  roomId: number;
+  startTime: Date | string;
+  endTime: Date | string;
+}
+
+export interface ReschedulePtSessionInput {
+  sessionId: number;
+  newStartTime: Date | string;
+  newEndTime: Date | string;
+  newTrainerId?: number;
+  newRoomId?: number;
+}
+
+export async function bookPtSession(input: BookPtSessionInput): Promise<Session> {
+  const start = convertToDate(input.startTime);
+  const end = convertToDate(input.endTime);
+
+  // Validate input times
+  if (!(start instanceof Date) || isNaN(start.getTime())) {
+    throw new Error("Invalid startTime.");
+  }
+  if (!(end instanceof Date) || isNaN(end.getTime())) {
+    throw new Error("Invalid endTime.");
+  }
+  if (start >= end) {
+    throw new Error("startTime must be before endTime.");
+  }
+
+  const member = await getMemberById(input.memberId);
+  const trainer = await getTrainerById(input.trainerId);
+  const room = await getRoomById(input.roomId);
+
+  if (!member) { throw new Error(`Member with id ${input.memberId} not found.`); }
+  if (!trainer) { throw new Error(`Trainer with id ${input.trainerId} not found.`); }
+  if (!room) { throw new Error(`Room with id ${input.roomId} not found.`); }
+
+  // 1) Check Trainer availability
+  await ensureTrainerAvailableForSlot(input.trainerId, start, end);
+
+  // 2) Check if Trainer has conflict
+  if (await trainerHasConflict(input.trainerId, start, end)) {
+    throw new Error(
+      "Trainer already has a session or class during this time."
+    );
+  }
+
+  // 3) Check if Member has conflict
+  if (await memberHasConflict(input.memberId, start, end)) {
+    throw new Error(
+      "Member already has a session or class during this time."
+    );
+  }
+
+  // 4) Check if Room has conflict
+  if (await roomHasConflict(input.roomId, start, end)) {
+    throw new Error("Room is already booked during this time.");
+  }
+
+  // 5) Everything is fine --> Create the session
+  return createSession({
+    member: { connect: { id: input.memberId } },
+    trainer: { connect: { id: input.trainerId } },
+    room: { connect: { id: input.roomId } },
+    startTime: start,
+    endTime: end,
+  });
+}
+
+export async function reschedulePtSession(input: ReschedulePtSessionInput): Promise<Session> {
+  const existing = await getSessionById(input.sessionId);
+  if (!existing) {
+    throw new Error(`Session with id ${input.sessionId} not found.`);
+  }
+
+  const start = convertToDate(input.newStartTime);
+  const end = convertToDate(input.newEndTime);
+
+  // Validate input times
+  if (!(start instanceof Date) || isNaN(start.getTime())) {
+    throw new Error("Invalid startTime.");
+  }
+  if (!(end instanceof Date) || isNaN(end.getTime())) {
+    throw new Error("Invalid endTime.");
+  }
+  if (start >= end) {
+    throw new Error("newStartTime must be before newEndTime.");
+  }
+
+  // Determine if new trainer or room is specified
+  const trainerId = input.newTrainerId ?? existing.trainerId;
+  const roomId = input.newRoomId ?? existing.roomId;
+
+  if (roomId == null) {
+    throw new Error("Room is required for PT sessions.");
+  }
+
+  const member = await getMemberById(existing.memberId);
+  const trainer = await getTrainerById(trainerId);
+  const room = await getRoomById(roomId);
+
+  if (!member) { throw new Error(`Member with id ${existing.memberId} not found.`); }
+  if (!trainer) { throw new Error(`Trainer with id ${trainerId} not found.`); }
+  if (!room) { throw new Error(`Room with id ${roomId} not found.`); }
+
+  // 1) Check Trainer availability
+  await ensureTrainerAvailableForSlot(trainerId, start, end);
+
+  // 2) Check if Trainer has conflict (ignore this session's own ID when checking conflicts)
+  if (await trainerHasConflict(trainerId, start, end, { ignoreSessionId: existing.id })) {
+    throw new Error(
+      "Trainer already has a session or class during this time."
+    );
+  }
+
+  // 3) Check if Member has conflict (same member)
+  if (await memberHasConflict(existing.memberId, start, end, { ignoreSessionId: existing.id })) {
+    throw new Error(
+      "Member already has a session or class during this time."
+    );
+  }
+
+  // 4) Check if Room has conflict
+  if (await roomHasConflict(roomId, start, end, { ignoreSessionId: existing.id })) {
+    throw new Error("Room is already booked during this time.");
+  }
+
+  // 5) Everything is fine --> Update the session
+  return updateSession(existing.id, {
+    trainer: trainerId !== existing.trainerId ? { connect: { id: trainerId } } : undefined, // Don't update if same trainer
+    room: roomId !== existing.roomId ? { connect: { id: roomId } } : undefined, // Don't update if same room
+    startTime: start,
+    endTime: end,
+  });
+}
+
+function isTimeWithinOneTimeAvailability(start: Date, end: Date, availability: TrainerAvailability): boolean {
+  if (!availability.startDateTime || !availability.endDateTime) {
+    return false;
+  }
+  return availability.startDateTime <= start && availability.endDateTime >= end;
+}
+
+function isTimeWithinWeeklyAvailability(start: Date, end: Date, availability: TrainerAvailability): boolean {
+  if (availability.dayOfWeek == null || !availability.startTime || !availability.endTime) {
+    return false;
+  }
+
+  // Check if same weekday
+  if (availability.dayOfWeek !== start.getDay()) {
+    return false;
+  }
+
+  // Use minutes since midnight for time comparison
+  if (start.toDateString() !== end.toDateString()) {
+    return false;
+  }
+
+  const startMinutes = minutesSinceMidnight(start);
+  const endMinutes = minutesSinceMidnight(end);
+  const availStartMinutes = minutesSinceMidnight(availability.startTime);
+  const availEndMinutes = minutesSinceMidnight(availability.endTime);
+
+  return availStartMinutes <= startMinutes && availEndMinutes >= endMinutes;
+}
+
+async function ensureTrainerAvailableForSlot(trainerId: number, start: Date, end: Date): Promise<void> {
+  const availabilities = await listTrainerAvailabilitiesForTrainer(trainerId);
+
+  const hasCoveringSlot = availabilities.some((a) => {
+    if (a.type === AvailabilityType.ONE_TIME) {
+      return isTimeWithinOneTimeAvailability(start, end, a);
+    }
+    if (a.type === AvailabilityType.WEEKLY) {
+      return isTimeWithinWeeklyAvailability(start, end, a);
+    }
+    return false;
+  });
+
+  if (!hasCoveringSlot) {
+    throw new Error(
+      "Trainer is not available during the requested time."
+    );
+  }
+}
+
+
+// --- Conflict checks ---
+
+async function trainerHasConflict(trainerId: number, start: Date, end: Date, options?: { ignoreSessionId?: number }): Promise<boolean> {
+  const sessions = await listSessionsForTrainer(trainerId);
+  const hasSessionConflict = sessions.some((s) => {
+    if (options?.ignoreSessionId && s.id === options.ignoreSessionId) {
+      return false;
+    }
+    return timeIntervalsOverlap(start, end, s.startTime, s.endTime);
+  });
+
+  if (hasSessionConflict) return true;
+
+  // Trainer's group classes
+  const classes = await prisma.fitnessClass.findMany({ //maybe implement as model function
+    where: { trainerId },
+  });
+
+  const hasClassConflict = classes.some((c) =>
+    timeIntervalsOverlap(start, end, c.startTime, c.endTime)
+  );
+
+  return hasClassConflict;
+}
+
+async function memberHasConflict(memberId: number, start: Date, end: Date, options?: { ignoreSessionId?: number }): Promise<boolean> {
+  // Member's PT sessions
+  const sessions = await listSessionsForMember(memberId);
+  const hasSessionConflict = sessions.some((s) => {
+    if (options?.ignoreSessionId && s.id === options.ignoreSessionId) {
+      return false;
+    }
+    return timeIntervalsOverlap(start, end, s.startTime, s.endTime);
+  });
+
+  if (hasSessionConflict) return true;
+
+  // Member's registered classes
+  const registrations = await listRegistrationsForMemberWithFitnessClass(memberId);
+
+  const hasClassConflict = registrations.some((reg) =>
+    timeIntervalsOverlap(start, end, reg.fitnessClass.startTime, reg.fitnessClass.endTime)
+  );
+
+  return hasClassConflict;
+}
+
+async function roomHasConflict(roomId: number, start: Date, end: Date, options?: { ignoreSessionId?: number }): Promise<boolean> {
+  // Room PT sessions
+  const sessions = await prisma.session.findMany({
+    where: { roomId },
+  });
+
+  const hasSessionConflict = sessions.some((s) => {
+    if (options?.ignoreSessionId && s.id === options.ignoreSessionId) {
+      return false;
+    }
+    return timeIntervalsOverlap(start, end, s.startTime, s.endTime);
+  });
+
+  if (hasSessionConflict) return true;
+
+  // Room classes
+  const classes = await prisma.fitnessClass.findMany({
+    where: { roomId },
+  });
+
+  const hasClassConflict = classes.some((c) =>
+    timeIntervalsOverlap(start, end, c.startTime, c.endTime)
+  );
+
+  return hasClassConflict;
+}
+
+
+
+
+
+function timeIntervalsOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
+  return aStart < bEnd && aEnd > bStart;
+}
+
+function convertToDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+function minutesSinceMidnight(d: Date): number {
+  return d.getHours() * 60 + d.getMinutes();
+}
