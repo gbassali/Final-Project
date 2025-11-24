@@ -15,6 +15,16 @@ export async function registerMember(data: Prisma.MemberCreateInput): Promise<Me
   return createMember(data);
 }
 
+export async function authenticateMember(
+  email: string,
+  password: string
+): Promise<Member> {
+  const member = await getMemberByEmail(email);
+  if (!member || member.password !== password) {
+    throw new Error("Invalid email or password");
+  }
+  return member;
+}
 export async function memberHasConflict(memberId: number, start: Date, end: Date, options?: { ignoreSessionId?: number }): Promise<boolean> {
   // Member's PT sessions
   const sessions = await listSessionsForMember(memberId);

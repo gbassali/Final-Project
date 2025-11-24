@@ -16,8 +16,21 @@ import {
 } from '../../models/memberModel';
 import { CreateFitnessGoalsInput } from '../../models/fitnessGoalModel';
 import { CreateHealthMetricInput } from '../../models/healthMetricModel';
+import { requireAuth } from './authRoutes';
 
 const router = Router();
+
+router.post('/', async (req, res, next) => {
+  try {
+    const data = buildMemberCreateInput(req.body);
+    const member = await registerMember(data);
+    res.status(201).json(member);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.use(requireAuth);
 
 router.get('/', async (_req, res, next) => {
   try {
@@ -37,16 +50,6 @@ router.get('/:memberId', async (req, res, next) => {
       return;
     }
     res.json(member);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.post('/', async (req, res, next) => {
-  try {
-    const data = buildMemberCreateInput(req.body);
-    const member = await registerMember(data);
-    res.status(201).json(member);
   } catch (error) {
     next(error);
   }
@@ -157,8 +160,12 @@ function parseDateString(input: unknown, field: string): Date {
 }
 
 function buildMemberCreateInput(body: any): Prisma.MemberCreateInput {
-  if (typeof body?.name !== 'string' || typeof body?.email !== 'string') {
-    const error = new Error('Name and email are required');
+  if (
+    typeof body?.name !== 'string' ||
+    typeof body?.email !== 'string' ||
+    typeof body?.password !== 'string'
+  ) {
+    const error = new Error('Name, email, and password are required');
     (error as any).status = 400;
     throw error;
   }
@@ -166,6 +173,7 @@ function buildMemberCreateInput(body: any): Prisma.MemberCreateInput {
   const input: Prisma.MemberCreateInput = {
     name: body.name,
     email: body.email,
+    password: body.password,
     phone: body.phone ?? null,
     pastClassCount:
       typeof body.pastClassCount === 'number'
@@ -185,6 +193,7 @@ function buildMemberUpdateInput(body: any): Prisma.MemberUpdateInput {
 
   if (body.name !== undefined) data.name = body.name;
   if (body.email !== undefined) data.email = body.email;
+  if (body.password !== undefined) data.password = body.password;
   if (body.phone !== undefined) data.phone = body.phone ?? null;
   if (body.pastClassCount !== undefined) data.pastClassCount = body.pastClassCount;
   if (body.dateOfBirth !== undefined) {

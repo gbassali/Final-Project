@@ -1,16 +1,28 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
-export async function postJSON<TResponse>(
+type RequestOptions = {
+  token?: string;
+  method?: string;
+  body?: unknown;
+};
+
+async function request<TResponse>(
   path: string,
-  body: unknown
+  { token, method = 'GET', body }: RequestOptions = {}
 ): Promise<TResponse> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  const headers: Record<string, string> = {};
+  const init: RequestInit = { method, headers };
+
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(body);
+  }
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, init);
 
   if (!response.ok) {
     let message = response.statusText;
@@ -25,6 +37,33 @@ export async function postJSON<TResponse>(
     throw new Error(message);
   }
 
+  if (response.status === 204) {
+    return {} as TResponse;
+  }
+
   return response.json() as Promise<TResponse>;
+}
+
+export function getJSON<TResponse>(
+  path: string,
+  options?: Omit<RequestOptions, 'method' | 'body'>
+) {
+  return request<TResponse>(path, { ...options, method: 'GET' });
+}
+
+export function postJSON<TResponse>(
+  path: string,
+  body: unknown,
+  options?: Omit<RequestOptions, 'method' | 'body'>
+) {
+  return request<TResponse>(path, { ...options, method: 'POST', body });
+}
+
+export function patchJSON<TResponse>(
+  path: string,
+  body: unknown,
+  options?: Omit<RequestOptions, 'method' | 'body'>
+) {
+  return request<TResponse>(path, { ...options, method: 'PATCH', body });
 }
 

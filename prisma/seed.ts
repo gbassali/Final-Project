@@ -109,6 +109,7 @@ async function main() {
     data: {
       name: 'John Doe',
       email: 'john.doe@email.com',
+      password: 'password',
       phone: '555-1001',
       dateOfBirth: new Date('1990-05-15'),
       pastClassCount: 12,
@@ -119,6 +120,7 @@ async function main() {
     data: {
       name: 'Jane Smith',
       email: 'jane.smith@email.com',
+      password: 'password',
       phone: '555-1002',
       dateOfBirth: new Date('1985-08-22'),
       pastClassCount: 8,
@@ -129,6 +131,7 @@ async function main() {
     data: {
       name: 'Bob Wilson',
       email: 'bob.wilson@email.com',
+      password: 'password',
       phone: '555-1003',
       dateOfBirth: new Date('1992-11-10'),
       pastClassCount: 0,
@@ -139,6 +142,7 @@ async function main() {
     data: {
       name: 'Alice Johnson',
       email: 'alice.johnson@email.com',
+      password: 'password',
       phone: '555-1004',
       dateOfBirth: new Date('1988-03-25'),
       pastClassCount: 25,
@@ -149,6 +153,7 @@ async function main() {
     data: {
       name: 'Charlie Davis',
       email: 'charlie.davis@email.com',
+      password: 'password',
       phone: '555-1005',
       dateOfBirth: new Date('1995-07-18'),
       pastClassCount: 3,
@@ -159,6 +164,7 @@ async function main() {
     data: {
       name: 'Diana Prince',
       email: 'diana.prince@email.com',
+      password: 'password',
       phone: '555-1006',
       dateOfBirth: new Date('1991-12-05'),
       pastClassCount: 15,
@@ -169,6 +175,7 @@ async function main() {
     data: {
       name: 'Ethan Hunt',
       email: 'ethan.hunt@email.com',
+      password: 'password',
       phone: '555-1007',
       dateOfBirth: new Date('1987-09-30'),
       pastClassCount: 0,
@@ -179,6 +186,7 @@ async function main() {
     data: {
       name: 'Fiona Green',
       email: 'fiona.green@email.com',
+      password: 'password',
       phone: '555-1008',
       dateOfBirth: new Date('1993-04-12'),
       pastClassCount: 7,
