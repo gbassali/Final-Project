@@ -6,7 +6,8 @@ import { listRegistrationsForMemberWithFitnessClass } from "../models/classRegis
 import { getMemberById } from "../models/memberModel";
 import { getTrainerById } from "../models/trainerModel";
 import { getRoomById } from "../models/roomModel";
-
+import { timeIntervalsOverlap, convertToDate, minutesSinceMidnight } from "./utilService";
+import { memberHasConflict } from "./memberService";
 
 export interface BookPtSessionInput {
   memberId: number;
@@ -222,28 +223,6 @@ async function trainerHasConflict(trainerId: number, start: Date, end: Date, opt
   return hasClassConflict;
 }
 
-async function memberHasConflict(memberId: number, start: Date, end: Date, options?: { ignoreSessionId?: number }): Promise<boolean> {
-  // Member's PT sessions
-  const sessions = await listSessionsForMember(memberId);
-  const hasSessionConflict = sessions.some((s) => {
-    if (options?.ignoreSessionId && s.id === options.ignoreSessionId) {
-      return false;
-    }
-    return timeIntervalsOverlap(start, end, s.startTime, s.endTime);
-  });
-
-  if (hasSessionConflict) return true;
-
-  // Member's registered classes
-  const registrations = await listRegistrationsForMemberWithFitnessClass(memberId);
-
-  const hasClassConflict = registrations.some((reg) =>
-    timeIntervalsOverlap(start, end, reg.fitnessClass.startTime, reg.fitnessClass.endTime)
-  );
-
-  return hasClassConflict;
-}
-
 async function roomHasConflict(roomId: number, start: Date, end: Date, options?: { ignoreSessionId?: number }): Promise<boolean> {
   // Room PT sessions
   const sessions = await prisma.session.findMany({
@@ -269,20 +248,4 @@ async function roomHasConflict(roomId: number, start: Date, end: Date, options?:
   );
 
   return hasClassConflict;
-}
-
-
-
-
-
-function timeIntervalsOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
-  return aStart < bEnd && aEnd > bStart;
-}
-
-function convertToDate(value: Date | string): Date {
-  return value instanceof Date ? value : new Date(value);
-}
-
-function minutesSinceMidnight(d: Date): number {
-  return d.getHours() * 60 + d.getMinutes();
 }
