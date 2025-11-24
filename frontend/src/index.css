@@ -57,6 +57,27 @@ main {
   flex-direction: column;
   gap: 1rem;
 }
+.tabs {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tab {
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  border: none;
+  background-color: #e2e8f0;
+  color: #0f172a;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab.active {
+  background-color: #1d4ed8;
+  color: white;
+  box-shadow: 0 5px 15px rgba(29, 78, 216, 0.3);
+}
 
 label {
   display: flex;

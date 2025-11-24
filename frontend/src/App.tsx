@@ -7,6 +7,7 @@ type MemberPayload = {
   email: string;
   phone?: string;
   dateOfBirth?: string;
+  password: string;
 };
 
 type Member = {
@@ -23,9 +24,20 @@ const emptyForm: MemberPayload = {
   email: '',
   phone: '',
   dateOfBirth: '',
+  password: '',
 };
 
+type TabKey = 'register' | 'members' | 'goals' | 'metrics';
+
+const tabs: { key: TabKey; label: string }[] = [
+  { key: 'register', label: 'Register Member' },
+  { key: 'members', label: 'Members' },
+  { key: 'goals', label: 'Fitness Goals' },
+  { key: 'metrics', label: 'Health Metrics' },
+];
+
 function App() {
+  const [activeTab, setActiveTab] = useState<TabKey>('register');
   const [form, setForm] = useState<MemberPayload>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +61,7 @@ function App() {
       email: form.email.trim(),
       phone: form.phone?.trim() || undefined,
       dateOfBirth: form.dateOfBirth || undefined,
+      password: form.password.trim(),
     };
 
     try {
@@ -67,100 +80,136 @@ function App() {
   return (
     <div className="page">
       <header>
-        <h1>Member Registration</h1>
-        <p>Use this form to add a new member to the database.</p>
+        <h1>Member & Profile Console</h1>
+        <p>Manage members, fitness goals, and health metrics.</p>
       </header>
 
-      <main>
-        <form className="card" onSubmit={handleSubmit}>
-          <label>
-            Name
-            <input
-              name="name"
-              type="text"
-              value={form.name}
-              onChange={handleChange}
-              required
-              placeholder="Jane Doe"
-            />
-          </label>
-
-          <label>
-            Email
-            <input
-              name="email"
-              type="email"
-              value={form.email}
-              onChange={handleChange}
-              required
-              placeholder="jane@example.com"
-            />
-          </label>
-
-          <label>
-            Phone
-            <input
-              name="phone"
-              type="tel"
-              value={form.phone}
-              onChange={handleChange}
-              placeholder="555-1234"
-            />
-          </label>
-
-          <label>
-            Date of Birth
-            <input
-              name="dateOfBirth"
-              type="date"
-              value={form.dateOfBirth}
-              onChange={handleChange}
-            />
-          </label>
-
-          <button type="submit" disabled={submitting}>
-            {submitting ? 'Submitting…' : 'Register Member'}
+      <nav className="tabs">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            className={tab.key === activeTab ? 'tab active' : 'tab'}
+            onClick={() => setActiveTab(tab.key)}
+          >
+            {tab.label}
           </button>
+        ))}
+      </nav>
 
-          {error && <p className="status error">{error}</p>}
-          {createdMember && !error && (
-            <p className="status success">
-              Member #{createdMember.id} created successfully.
-            </p>
-          )}
-        </form>
+      <main>
+        {activeTab === 'register' && (
+          <>
+            <form className="card" onSubmit={handleSubmit}>
+              <label>
+                Name
+                <input
+                  name="name"
+                  type="text"
+                  value={form.name}
+                  onChange={handleChange}
+                  required
+                  placeholder="Jane Doe"
+                />
+              </label>
 
-        {createdMember && (
+              <label>
+                Email
+                <input
+                  name="email"
+                  type="email"
+                  value={form.email}
+                  onChange={handleChange}
+                  required
+                  placeholder="jane@example.com"
+                />
+              </label>
+
+              <label>
+                Password
+                <input
+                  name="password"
+                  type="password"
+                  value={form.password}
+                  onChange={handleChange}
+                  required
+                  minLength={6}
+                  placeholder="At least 6 characters"
+                />
+              </label>
+
+              <label>
+                Phone
+                <input
+                  name="phone"
+                  type="tel"
+                  value={form.phone}
+                  onChange={handleChange}
+                  placeholder="555-1234"
+                />
+              </label>
+
+              <label>
+                Date of Birth
+                <input
+                  name="dateOfBirth"
+                  type="date"
+                  value={form.dateOfBirth}
+                  onChange={handleChange}
+                />
+              </label>
+
+              <button type="submit" disabled={submitting}>
+                {submitting ? 'Submitting…' : 'Register Member'}
+              </button>
+
+              {error && <p className="status error">{error}</p>}
+              {createdMember && !error && (
+                <p className="status success">
+                  Member #{createdMember.id} created successfully.
+                </p>
+              )}
+            </form>
+
+            {createdMember && (
+              <section className="card">
+                <h2>Last Created Member</h2>
+                <dl>
+                  <div>
+                    <dt>Name</dt>
+                    <dd>{createdMember.name}</dd>
+                  </div>
+                  <div>
+                    <dt>Email</dt>
+                    <dd>{createdMember.email}</dd>
+                  </div>
+                  <div>
+                    <dt>Phone</dt>
+                    <dd>{createdMember.phone ?? 'N/A'}</dd>
+                  </div>
+                  <div>
+                    <dt>Date of Birth</dt>
+                    <dd>
+                      {createdMember.dateOfBirth
+                        ? new Date(createdMember.dateOfBirth).toLocaleDateString()
+                        : 'N/A'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Created At</dt>
+                    <dd>
+                      {new Date(createdMember.createdAt).toLocaleString()}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+            )}
+          </>
+        )}
+
+        {activeTab !== 'register' && (
           <section className="card">
-            <h2>Last Created Member</h2>
-            <dl>
-              <div>
-                <dt>Name</dt>
-                <dd>{createdMember.name}</dd>
-              </div>
-              <div>
-                <dt>Email</dt>
-                <dd>{createdMember.email}</dd>
-              </div>
-              <div>
-                <dt>Phone</dt>
-                <dd>{createdMember.phone ?? 'N/A'}</dd>
-              </div>
-              <div>
-                <dt>Date of Birth</dt>
-                <dd>
-                  {createdMember.dateOfBirth
-                    ? new Date(createdMember.dateOfBirth).toLocaleDateString()
-                    : 'N/A'}
-                </dd>
-              </div>
-              <div>
-                <dt>Created At</dt>
-                <dd>
-                  {new Date(createdMember.createdAt).toLocaleString()}
-                </dd>
-              </div>
-            </dl>
+            <h2>{tabs.find((t) => t.key === activeTab)?.label}</h2>
+            <p>UI coming soon.</p>
           </section>
         )}
       </main>
