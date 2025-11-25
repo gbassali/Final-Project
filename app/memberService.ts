@@ -25,6 +25,7 @@ export async function authenticateMember(
   }
   return member;
 }
+
 export async function memberHasConflict(memberId: number, start: Date, end: Date, options?: { ignoreSessionId?: number }): Promise<boolean> {
   // Member's PT sessions
   const sessions = await listSessionsForMember(memberId);

@@ -1,13 +1,13 @@
-import { Session, TrainerAvailability, AvailabilityType } from "../generated/prisma/client";
-import { createSession, getSessionById, listSessionsForMember, listSessionsForTrainer, updateSession } from "../models/sessionModel";
-import prisma from "../models/prismaClient";
+import { Session, AvailabilityType } from "../generated/prisma/client";
+import { createSession, getSessionById, updateSession } from "../models/sessionModel";
 import { listTrainerAvailabilitiesForTrainer } from "../models/trainerAvailabilityModel";
-import { listRegistrationsForMemberWithFitnessClass } from "../models/classRegistrationModel";
 import { getMemberById } from "../models/memberModel";
 import { getTrainerById } from "../models/trainerModel";
 import { getRoomById } from "../models/roomModel";
-import { timeIntervalsOverlap, convertToDate, minutesSinceMidnight } from "./utilService";
+import { convertToDate, isTimeWithinOneTimeAvailability, isTimeWithinWeeklyAvailability } from "./utilService";
 import { memberHasConflict } from "./memberService";
+import { roomHasConflict } from "./roomService";
+import { trainerHasConflict } from "./trainerService";
 
 export interface BookPtSessionInput {
   memberId: number;
@@ -147,35 +147,6 @@ export async function reschedulePtSession(input: ReschedulePtSessionInput): Prom
   });
 }
 
-function isTimeWithinOneTimeAvailability(start: Date, end: Date, availability: TrainerAvailability): boolean {
-  if (!availability.startDateTime || !availability.endDateTime) {
-    return false;
-  }
-  return availability.startDateTime <= start && availability.endDateTime >= end;
-}
-
-function isTimeWithinWeeklyAvailability(start: Date, end: Date, availability: TrainerAvailability): boolean {
-  if (availability.dayOfWeek == null || !availability.startTime || !availability.endTime) {
-    return false;
-  }
-
-  // Check if same weekday
-  if (availability.dayOfWeek !== start.getDay()) {
-    return false;
-  }
-
-  // Use minutes since midnight for time comparison
-  if (start.toDateString() !== end.toDateString()) {
-    return false;
-  }
-
-  const startMinutes = minutesSinceMidnight(start);
-  const endMinutes = minutesSinceMidnight(end);
-  const availStartMinutes = minutesSinceMidnight(availability.startTime);
-  const availEndMinutes = minutesSinceMidnight(availability.endTime);
-
-  return availStartMinutes <= startMinutes && availEndMinutes >= endMinutes;
-}
 
 async function ensureTrainerAvailableForSlot(trainerId: number, start: Date, end: Date): Promise<void> {
   const availabilities = await listTrainerAvailabilitiesForTrainer(trainerId);
@@ -197,55 +168,4 @@ async function ensureTrainerAvailableForSlot(trainerId: number, start: Date, end
   }
 }
 
-
-// --- Conflict checks ---
-
-async function trainerHasConflict(trainerId: number, start: Date, end: Date, options?: { ignoreSessionId?: number }): Promise<boolean> {
-  const sessions = await listSessionsForTrainer(trainerId);
-  const hasSessionConflict = sessions.some((s) => {
-    if (options?.ignoreSessionId && s.id === options.ignoreSessionId) {
-      return false;
-    }
-    return timeIntervalsOverlap(start, end, s.startTime, s.endTime);
-  });
-
-  if (hasSessionConflict) return true;
-
-  // Trainer's group classes
-  const classes = await prisma.fitnessClass.findMany({ //maybe implement as model function
-    where: { trainerId },
-  });
-
-  const hasClassConflict = classes.some((c) =>
-    timeIntervalsOverlap(start, end, c.startTime, c.endTime)
-  );
-
-  return hasClassConflict;
-}
-
-async function roomHasConflict(roomId: number, start: Date, end: Date, options?: { ignoreSessionId?: number }): Promise<boolean> {
-  // Room PT sessions
-  const sessions = await prisma.session.findMany({
-    where: { roomId },
-  });
-
-  const hasSessionConflict = sessions.some((s) => {
-    if (options?.ignoreSessionId && s.id === options.ignoreSessionId) {
-      return false;
-    }
-    return timeIntervalsOverlap(start, end, s.startTime, s.endTime);
-  });
-
-  if (hasSessionConflict) return true;
-
-  // Room classes
-  const classes = await prisma.fitnessClass.findMany({
-    where: { roomId },
-  });
-
-  const hasClassConflict = classes.some((c) =>
-    timeIntervalsOverlap(start, end, c.startTime, c.endTime)
-  );
-
-  return hasClassConflict;
-}
+//move helpers into generic servicess!!
