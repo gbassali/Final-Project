@@ -12,10 +12,6 @@ export async function getTrainerById(id: number): Promise<Trainer | null> {
   return prisma.trainer.findUnique({ where: { id } });
 }
 
-export async function getTrainerByEmail(email: string): Promise<Trainer | null> {
-  return prisma.trainer.findUnique({ where: { email } });
-}
-
 export async function listTrainers(): Promise<Trainer[]> {
   return prisma.trainer.findMany({ orderBy: { createdAt: "desc" } });
 }
