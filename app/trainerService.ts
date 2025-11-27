@@ -10,7 +10,7 @@ export async function ensureTrainerExists(trainerId: number): Promise<void> {
   }
 }
 
-export async function trainerHasConflict(trainerId: number, start: Date, end: Date, options?: { ignoreSessionId?: number }): Promise<boolean> {
+export async function trainerHasConflict(trainerId: number, start: Date, end: Date, options?: { ignoreSessionId?: number; ignoreClassId?: number }): Promise<boolean> {
   const sessions = await listSessionsForTrainer(trainerId);
   const hasSessionConflict = sessions.some((s) => {
     if (options?.ignoreSessionId && s.id === options.ignoreSessionId) {
@@ -26,9 +26,12 @@ export async function trainerHasConflict(trainerId: number, start: Date, end: Da
     where: { trainerId },
   });
 
-  const hasClassConflict = classes.some((c) =>
-    timeIntervalsOverlap(start, end, c.startTime, c.endTime)
+  const hasClassConflict = classes.some((c) => {
+    if (options?.ignoreClassId && c.id === options.ignoreClassId) {
+      return false;
+    }
+    return timeIntervalsOverlap(start, end, c.startTime, c.endTime)
+  } 
   );
-
   return hasClassConflict;
 }

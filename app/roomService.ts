@@ -1,7 +1,15 @@
 import prisma from "../models/prismaClient";
+import { getRoomById } from "../models/roomModel";
 import { timeIntervalsOverlap } from "./utilService";
 
-export async function roomHasConflict(roomId: number, start: Date, end: Date, options?: { ignoreSessionId?: number }): Promise<boolean> {
+export async function ensureRoomExists(roomId: number): Promise<void> {
+  const room = await getRoomById(roomId);
+  if (!room) {
+    throw new Error(`Room with id ${roomId} not found.`);
+  }
+}
+
+export async function roomHasConflict(roomId: number, start: Date, end: Date, options?: { ignoreSessionId?: number; ignoreClassId?: number }): Promise<boolean> {
   // Room PT sessions
   const sessions = await prisma.session.findMany({
     where: { roomId },
@@ -21,9 +29,12 @@ export async function roomHasConflict(roomId: number, start: Date, end: Date, op
     where: { roomId },
   });
 
-  const hasClassConflict = classes.some((c) =>
-    timeIntervalsOverlap(start, end, c.startTime, c.endTime)
+  const hasClassConflict = classes.some((c) => {
+    if (options?.ignoreClassId && c.id === options.ignoreClassId) {
+      return false;
+    }
+    return timeIntervalsOverlap(start, end, c.startTime, c.endTime)
+  }
   );
-
   return hasClassConflict;
 }
