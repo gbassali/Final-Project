@@ -24,6 +24,15 @@ export async function listUpcomingFitnessClasses(): Promise<FitnessClass[]> {
   });
 }
 
+export async function listFitnessClassesForTrainer(
+  trainerId: number
+): Promise<FitnessClass[]> {
+  return prisma.fitnessClass.findMany({
+    where: { trainerId },
+    orderBy: { startTime: "asc" },
+  });
+}
+
 export async function updateFitnessClass(
   id: number,
   data: UpdateFitnessClassInput

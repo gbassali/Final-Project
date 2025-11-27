@@ -75,6 +75,30 @@ main {
   gap: 0.5rem;
 }
 
+.section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.section-tab {
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid #cbd5f5;
+  background: white;
+  cursor: pointer;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.section-tab.active {
+  background-color: #1d4ed8;
+  color: white;
+  border-color: #1d4ed8;
+  box-shadow: 0 5px 15px rgba(29, 78, 216, 0.25);
+}
+
 .list {
   list-style: none;
   margin: 0;
@@ -90,6 +114,44 @@ main {
   gap: 0.5rem;
   font-weight: 500;
   color: #0f172a;
+}
+
+.schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.schedule-card {
+  border-radius: 10px;
+  padding: 1rem;
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.schedule-card .badge {
+  align-self: flex-start;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: white;
+}
+
+.badge.session {
+  background-color: #22c55e;
+}
+
+.badge.class {
+  background-color: #f97316;
+}
+
+.schedule-card .time-range {
+  color: #475569;
+  font-size: 0.95rem;
 }
 
 label {

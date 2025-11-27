@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { postJSON, getJSON, patchJSON } from './api/client';
+import { postJSON, getJSON, patchJSON, deleteJSON } from './api/client';
 
 type MemberSummary = {
   id: number;
@@ -23,7 +23,6 @@ type FitnessGoal = {
   value: string;
   active: boolean;
   recordedAt: string | null;
-  memberId: number;
 };
 
 type HealthMetric = {
@@ -32,10 +31,43 @@ type HealthMetric = {
   value: number;
   unit: string | null;
   recordedAt: string | null;
-  memberId: number;
 };
 
-type Session = {
+type TrainerSummary = {
+  id: number;
+  name: string;
+  email: string;
+};
+
+type TrainerAvailability = {
+  id: number;
+  type: 'ONE_TIME' | 'WEEKLY';
+  dayOfWeek: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  startDateTime: string | null;
+  endDateTime: string | null;
+};
+
+type TrainerSchedule = {
+  sessions: {
+    id: number;
+    memberId: number;
+    startTime: string;
+    endTime: string;
+    roomId: number | null;
+  }[];
+  classes: {
+    id: number;
+    name: string;
+    startTime: string;
+    endTime: string;
+    roomId: number;
+    capacity: number;
+  }[];
+};
+
+type SessionState = {
   token: string;
   member: MemberSummary;
 };
@@ -57,8 +89,29 @@ const emptyLoginForm: LoginPayload = {
 
 const SESSION_KEY = 'member-session';
 
+type SectionKey = 'profile' | 'goals' | 'metrics' | 'trainer';
+
+const sections: { key: SectionKey; label: string }[] = [
+  { key: 'profile', label: 'Profile' },
+  { key: 'goals', label: 'Fitness Goals' },
+  { key: 'metrics', label: 'Health Metrics' },
+  { key: 'trainer', label: 'Trainer Tools' },
+];
+
+type ScheduleEntry = {
+  id: string;
+  kind: 'SESSION' | 'CLASS';
+  title: string;
+  subTitle: string;
+  startTime: string;
+  endTime: string;
+};
+
 function App() {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<SessionState | null>(null);
+  const [activeSection, setActiveSection] =
+    useState<SectionKey>('profile');
+
   const [loginForm, setLoginForm] = useState<LoginPayload>(emptyLoginForm);
   const [loginSubmitting, setLoginSubmitting] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -94,11 +147,30 @@ function App() {
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
 
+  const [trainers, setTrainers] = useState<TrainerSummary[]>([]);
+  const [selectedTrainerId, setSelectedTrainerId] = useState<
+    number | null
+  >(null);
+  const [availabilities, setAvailabilities] = useState<
+    TrainerAvailability[]
+  >([]);
+  const [schedule, setSchedule] = useState<TrainerSchedule | null>(null);
+  const [trainerMessage, setTrainerMessage] = useState<string | null>(null);
+  const [availabilityForm, setAvailabilityForm] = useState({
+    type: 'WEEKLY' as 'WEEKLY' | 'ONE_TIME',
+    dayOfWeek: 1,
+    startTime: '09:00',
+    endTime: '12:00',
+    startDateTime: '',
+    endDateTime: '',
+  });
+  const [trainerLoading, setTrainerLoading] = useState(false);
+
   useEffect(() => {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return;
     try {
-      const parsed = JSON.parse(raw) as Session;
+      const parsed = JSON.parse(raw) as SessionState;
       if (parsed?.token && parsed?.member) {
         setSession(parsed);
       }
@@ -124,13 +196,27 @@ function App() {
   useEffect(() => {
     if (session?.token) {
       loadDashboard();
+      loadTrainers();
     } else {
       setProfile(null);
       setGoals([]);
       setMetrics([]);
+      setTrainers([]);
+      setAvailabilities([]);
+      setSchedule(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
+
+  useEffect(() => {
+    if (session?.token && selectedTrainerId) {
+      loadTrainerDetails(selectedTrainerId);
+    } else {
+      setAvailabilities([]);
+      setSchedule(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTrainerId]);
 
   const loadDashboard = async () => {
     if (!session?.token) return;
@@ -158,6 +244,46 @@ function App() {
       setDashboardError(message);
     } finally {
       setDashboardLoading(false);
+    }
+  };
+
+  const loadTrainers = async () => {
+    if (!session?.token) return;
+    try {
+      const data = await getJSON<TrainerSummary[]>('/api/trainers', {
+        token: session.token,
+      });
+      setTrainers(data);
+      if (data.length && !selectedTrainerId) {
+        setSelectedTrainerId(data[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load trainers', err);
+    }
+  };
+
+  const loadTrainerDetails = async (trainerId: number) => {
+    if (!session?.token) return;
+    setTrainerLoading(true);
+    setTrainerMessage(null);
+    try {
+      const [availabilityData, scheduleData] = await Promise.all([
+        getJSON<TrainerAvailability[]>(
+          `/api/trainers/${trainerId}/availabilities`,
+          { token: session.token }
+        ),
+        getJSON<TrainerSchedule>(`/api/trainers/${trainerId}/schedule`, {
+          token: session.token,
+        }),
+      ]);
+      setAvailabilities(availabilityData);
+      setSchedule(scheduleData);
+    } catch (err) {
+      setTrainerMessage(
+        err instanceof Error ? err.message : 'Failed to load trainer data'
+      );
+    } finally {
+      setTrainerLoading(false);
     }
   };
 
@@ -210,8 +336,6 @@ function App() {
     }
   };
 
-  const isAuthenticated = Boolean(session?.token);
-
   const handleProfileFieldChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
     setProfileForm((prev) => ({
@@ -238,11 +362,79 @@ function App() {
     }));
   };
 
+  const handleAvailabilityFieldChange = (
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = event.target as HTMLInputElement;
+    setAvailabilityForm((prev) => ({
+      ...prev,
+      [name]:
+        name === 'dayOfWeek'
+          ? Number(value)
+          : name === 'type'
+          ? (value as 'WEEKLY' | 'ONE_TIME')
+          : value,
+    }));
+  };
+
+  const handleAddAvailability = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!session?.token || !selectedTrainerId) return;
+    setTrainerLoading(true);
+    setTrainerMessage(null);
+    try {
+      const payload: Record<string, unknown> = {
+        type: availabilityForm.type,
+      };
+      if (availabilityForm.type === 'WEEKLY') {
+        payload.dayOfWeek = availabilityForm.dayOfWeek;
+        payload.startTime = availabilityForm.startTime;
+        payload.endTime = availabilityForm.endTime;
+      } else {
+        payload.startDateTime = availabilityForm.startDateTime;
+        payload.endDateTime = availabilityForm.endDateTime;
+      }
+      const created = await postJSON<TrainerAvailability>(
+        `/api/trainers/${selectedTrainerId}/availabilities`,
+        payload,
+        { token: session.token }
+      );
+      setAvailabilities((prev) => [...prev, created]);
+      setTrainerMessage('Availability added');
+    } catch (err) {
+      setTrainerMessage(
+        err instanceof Error ? err.message : 'Failed to add availability'
+      );
+    } finally {
+      setTrainerLoading(false);
+    }
+  };
+
+  const handleDeleteAvailability = async (id: number) => {
+    if (!session?.token || !selectedTrainerId) return;
+    try {
+      await deleteJSON(
+        `/api/trainers/${selectedTrainerId}/availabilities/${id}`,
+        { token: session.token }
+      );
+      setAvailabilities((prev) => prev.filter((slot) => slot.id !== id));
+      setTrainerMessage('Availability removed');
+    } catch (err) {
+      setTrainerMessage(
+        err instanceof Error ? err.message : 'Failed to delete availability'
+      );
+    }
+  };
+
+  const isAuthenticated = Boolean(session?.token);
+
   return (
     <div className="page">
       <header>
-        <h1>Member Dashboard</h1>
-        <p>Login to view and manage your profile, goals, and health metrics.</p>
+        <h1>Health Club Console</h1>
+        <p>
+          Manage your personal data and trainer resources in one place.
+        </p>
       </header>
 
       <main>
@@ -281,13 +473,34 @@ function App() {
 
         {isAuthenticated && (
           <>
-            <section className="card">
-              <div className="card-header">
-                <h2>Profile</h2>
-                <div className="actions">
-                  <button type="button" onClick={handleLogout}>
-                    Logout
-                  </button>
+            <div className="section-tabs">
+              {sections.map((section) => (
+                <button
+                  key={section.key}
+                  className={
+                    activeSection === section.key
+                      ? 'section-tab active'
+                      : 'section-tab'
+                  }
+                  type="button"
+                  onClick={() => setActiveSection(section.key)}
+                >
+                  {section.label}
+                </button>
+              ))}
+              <button
+                className="section-tab"
+                type="button"
+                onClick={handleLogout}
+              >
+                Logout
+              </button>
+            </div>
+
+            {activeSection === 'profile' && (
+              <section className="card">
+                <div className="card-header">
+                  <h2>Profile</h2>
                   <button
                     type="button"
                     onClick={loadDashboard}
@@ -296,311 +509,527 @@ function App() {
                     Refresh
                   </button>
                 </div>
-              </div>
-              {dashboardError && (
-                <p className="status error">{dashboardError}</p>
-              )}
-              {profile ? (
-                <>
-                  <dl>
-                    <div>
-                      <dt>Name</dt>
-                      <dd>{profile.name}</dd>
-                    </div>
-                    <div>
-                      <dt>Email</dt>
-                      <dd>{profile.email}</dd>
-                    </div>
-                    <div>
-                      <dt>Phone</dt>
-                      <dd>{profile.phone ?? 'N/A'}</dd>
-                    </div>
-                    <div>
-                      <dt>Date of Birth</dt>
-                      <dd>
-                        {profile.dateOfBirth
-                          ? new Date(profile.dateOfBirth).toLocaleDateString()
-                          : 'N/A'}
-                      </dd>
-                    </div>
-                  </dl>
-                  <form
-                    className="stack"
-                    onSubmit={async (event) => {
-                      event.preventDefault();
-                      if (!session?.token) return;
-                      setProfileSaving(true);
-                      setProfileMessage(null);
-                      try {
-                        const payload: Record<string, unknown> = {
-                          name: profileForm.name,
-                          phone: profileForm.phone || null,
-                        };
-                        if (profileForm.dateOfBirth) {
-                          payload.dateOfBirth = profileForm.dateOfBirth;
+                {dashboardError && (
+                  <p className="status error">{dashboardError}</p>
+                )}
+                {profile ? (
+                  <>
+                    <dl>
+                      <div>
+                        <dt>Name</dt>
+                        <dd>{profile.name}</dd>
+                      </div>
+                      <div>
+                        <dt>Email</dt>
+                        <dd>{profile.email}</dd>
+                      </div>
+                      <div>
+                        <dt>Phone</dt>
+                        <dd>{profile.phone ?? 'N/A'}</dd>
+                      </div>
+                      <div>
+                        <dt>Date of Birth</dt>
+                        <dd>
+                          {profile.dateOfBirth
+                            ? new Date(
+                                profile.dateOfBirth
+                              ).toLocaleDateString()
+                            : 'N/A'}
+                        </dd>
+                      </div>
+                    </dl>
+                    <form
+                      className="stack"
+                      onSubmit={async (event) => {
+                        event.preventDefault();
+                        if (!session?.token) return;
+                        setProfileSaving(true);
+                        setProfileMessage(null);
+                        try {
+                          const payload: Record<string, unknown> = {
+                            name: profileForm.name,
+                            phone: profileForm.phone || null,
+                          };
+                          if (profileForm.dateOfBirth) {
+                            payload.dateOfBirth = profileForm.dateOfBirth;
+                          }
+                          const updated = await patchJSON<MemberProfile>(
+                            `/api/members/${session.member.id}`,
+                            payload,
+                            { token: session.token }
+                          );
+                          setProfile(updated);
+                          setProfileMessage('Profile updated successfully');
+                        } catch (err) {
+                          setProfileMessage(
+                            err instanceof Error
+                              ? err.message
+                              : 'Failed to update profile'
+                          );
+                        } finally {
+                          setProfileSaving(false);
                         }
-                        const updated = await patchJSON<MemberProfile>(
-                          `/api/members/${session.member.id}`,
-                          payload,
-                          { token: session.token }
-                        );
-                        setProfile(updated);
-                        setProfileMessage('Profile updated successfully');
-                      } catch (err) {
-                        setProfileMessage(
-                          err instanceof Error
-                            ? err.message
-                            : 'Failed to update profile'
-                        );
-                      } finally {
-                        setProfileSaving(false);
+                      }}
+                    >
+                      <h3>Edit Profile</h3>
+                      <label>
+                        Name
+                        <input
+                          name="name"
+                          value={profileForm.name}
+                          onChange={handleProfileFieldChange}
+                          required
+                        />
+                      </label>
+                      <label>
+                        Phone
+                        <input
+                          name="phone"
+                          value={profileForm.phone}
+                          onChange={handleProfileFieldChange}
+                        />
+                      </label>
+                      <label>
+                        Date of Birth
+                        <input
+                          name="dateOfBirth"
+                          type="date"
+                          value={profileForm.dateOfBirth}
+                          onChange={handleProfileFieldChange}
+                        />
+                      </label>
+                      <button type="submit" disabled={profileSaving}>
+                        {profileSaving ? 'Saving…' : 'Save Changes'}
+                      </button>
+                      {profileMessage && (
+                        <p className="status success">{profileMessage}</p>
+                      )}
+                    </form>
+                  </>
+                ) : (
+                  <p>Loading profile…</p>
+                )}
+              </section>
+            )}
+
+            {activeSection === 'goals' && (
+              <section className="card">
+                <h2>Fitness Goals</h2>
+                {goalMessage && (
+                  <p className="status success">{goalMessage}</p>
+                )}
+                {goals.length ? (
+                  <ul className="list">
+                    {goals.map((goal) => (
+                      <li key={goal.id}>
+                        <strong>{goal.value}</strong> ·{' '}
+                        {goal.active ? 'Active' : 'Inactive'} ·{' '}
+                        {goal.recordedAt
+                          ? new Date(goal.recordedAt).toLocaleDateString()
+                          : 'No date'}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>No goals recorded yet.</p>
+                )}
+                <form
+                  className="stack"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (!session?.token) return;
+                    setGoalSaving(true);
+                    setGoalMessage(null);
+                    try {
+                      const payload: Record<string, unknown> = {
+                        value: goalForm.value,
+                        active: goalForm.active,
+                      };
+                      if (goalForm.recordedAt) {
+                        payload.recordedAt = goalForm.recordedAt;
                       }
-                    }}
+                      const created = await postJSON<FitnessGoal>(
+                        `/api/members/${session.member.id}/goals`,
+                        payload,
+                        { token: session.token }
+                      );
+                      setGoals((prev) => [created, ...prev]);
+                      setGoalForm({ value: '', active: true, recordedAt: '' });
+                      setGoalMessage('Goal added successfully');
+                    } catch (err) {
+                      setGoalMessage(
+                        err instanceof Error
+                          ? err.message
+                          : 'Failed to add goal'
+                      );
+                    } finally {
+                      setGoalSaving(false);
+                    }
+                  }}
+                >
+                  <h3>Add Goal</h3>
+                  <label>
+                    Goal
+                    <input
+                      name="value"
+                      value={goalForm.value}
+                      onChange={handleGoalFieldChange}
+                      required
+                    />
+                  </label>
+                  <label className="checkbox">
+                    <input
+                      type="checkbox"
+                      name="active"
+                      checked={goalForm.active}
+                      onChange={handleGoalFieldChange}
+                    />
+                    Active
+                  </label>
+                  <label>
+                    Recorded At
+                    <input
+                      type="date"
+                      name="recordedAt"
+                      value={goalForm.recordedAt}
+                      onChange={handleGoalFieldChange}
+                    />
+                  </label>
+                  <button type="submit" disabled={goalSaving}>
+                    {goalSaving ? 'Saving…' : 'Add Goal'}
+                  </button>
+                </form>
+              </section>
+            )}
+
+            {activeSection === 'metrics' && (
+              <section className="card">
+                <h2>Health Metrics</h2>
+                {metricMessage && (
+                  <p className="status success">{metricMessage}</p>
+                )}
+                {metrics.length ? (
+                  <ul className="list">
+                    {metrics.map((metric) => (
+                      <li key={metric.id}>
+                        <strong>{metric.metricType}</strong> · {metric.value}{' '}
+                        {metric.unit ?? ''}
+                        {' · '}
+                        {metric.recordedAt
+                          ? new Date(metric.recordedAt).toLocaleString()
+                          : 'No timestamp'}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>No metrics recorded yet.</p>
+                )}
+                <form
+                  className="stack"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (!session?.token) return;
+                    setMetricSaving(true);
+                    setMetricMessage(null);
+                    const valueNumber = Number(metricForm.value);
+                    if (Number.isNaN(valueNumber)) {
+                      setMetricMessage('Metric value must be a number');
+                      setMetricSaving(false);
+                      return;
+                    }
+                    try {
+                      const payload: Record<string, unknown> = {
+                        metricType: metricForm.metricType,
+                        value: valueNumber,
+                        unit: metricForm.unit || null,
+                      };
+                      if (metricForm.recordedAt) {
+                        payload.recordedAt = metricForm.recordedAt;
+                      }
+                      const created = await postJSON<HealthMetric>(
+                        `/api/members/${session.member.id}/metrics`,
+                        payload,
+                        { token: session.token }
+                      );
+                      setMetrics((prev) => [created, ...prev]);
+                      setMetricForm({
+                        metricType: '',
+                        value: '',
+                        unit: '',
+                        recordedAt: '',
+                      });
+                      setMetricMessage('Metric added successfully');
+                    } catch (err) {
+                      setMetricMessage(
+                        err instanceof Error
+                          ? err.message
+                          : 'Failed to add metric'
+                      );
+                    } finally {
+                      setMetricSaving(false);
+                    }
+                  }}
+                >
+                  <h3>Add Metric</h3>
+                  <label>
+                    Type
+                    <input
+                      name="metricType"
+                      value={metricForm.metricType}
+                      onChange={handleMetricFieldChange}
+                      required
+                      placeholder="WEIGHT, HEART_RATE, etc."
+                    />
+                  </label>
+                  <label>
+                    Value
+                    <input
+                      name="value"
+                      type="number"
+                      step="any"
+                      value={metricForm.value}
+                      onChange={handleMetricFieldChange}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Unit
+                    <input
+                      name="unit"
+                      value={metricForm.unit}
+                      onChange={handleMetricFieldChange}
+                      placeholder="kg, bpm, %"
+                    />
+                  </label>
+                  <label>
+                    Recorded At
+                    <input
+                      type="datetime-local"
+                      name="recordedAt"
+                      value={metricForm.recordedAt}
+                      onChange={handleMetricFieldChange}
+                    />
+                  </label>
+                  <button type="submit" disabled={metricSaving}>
+                    {metricSaving ? 'Saving…' : 'Add Metric'}
+                  </button>
+                </form>
+              </section>
+            )}
+
+            {activeSection === 'trainer' && (
+              <section className="card">
+                <h2>Trainer Tools</h2>
+                {trainerMessage && (
+                  <p className="status success">{trainerMessage}</p>
+                )}
+                <label>
+                  Select Trainer
+                  <select
+                    value={selectedTrainerId ?? ''}
+                    onChange={(e) =>
+                      setSelectedTrainerId(
+                        e.target.value ? Number(e.target.value) : null
+                      )
+                    }
                   >
-                    <h3>Edit Profile</h3>
-                    <label>
-                      Name
-                      <input
-                        name="name"
-                        value={profileForm.name}
-                        onChange={handleProfileFieldChange}
-                        required
-                      />
-                    </label>
-                    <label>
-                      Phone
-                      <input
-                        name="phone"
-                        value={profileForm.phone}
-                        onChange={handleProfileFieldChange}
-                      />
-                    </label>
-                    <label>
-                      Date of Birth
-                      <input
-                        name="dateOfBirth"
-                        type="date"
-                        value={profileForm.dateOfBirth}
-                        onChange={handleProfileFieldChange}
-                      />
-                    </label>
-                    <button type="submit" disabled={profileSaving}>
-                      {profileSaving ? 'Saving…' : 'Save Changes'}
-                    </button>
-                    {profileMessage && (
-                      <p className="status success">{profileMessage}</p>
+                    {trainers.map((trainer) => (
+                      <option key={trainer.id} value={trainer.id}>
+                        {trainer.name} ({trainer.email})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {trainerLoading && <p>Loading trainer data…</p>}
+                {!trainerLoading && (
+                  <>
+                    <h3>Availabilities</h3>
+                    {availabilities.length ? (
+                      <ul className="list">
+                        {availabilities.map((slot) => (
+                          <li key={slot.id}>
+                            <span>
+                              {slot.type === 'WEEKLY'
+                                ? `Weekly · ${weekdayName(
+                                    slot.dayOfWeek
+                                  )} ${formatTime(slot.startTime)} - ${formatTime(
+                                    slot.endTime
+                                  )}`
+                                : `One-time · ${formatDate(slot.startDateTime)} ${formatTime(
+                                    slot.startDateTime
+                                  )} - ${formatDate(slot.endDateTime)} ${formatTime(
+                                    slot.endDateTime
+                                  )}`}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAvailability(slot.id)}
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>No availability slots yet.</p>
                     )}
-                  </form>
-                </>
-              ) : (
-                <p>Loading profile…</p>
-              )}
-            </section>
+                    <form className="stack" onSubmit={handleAddAvailability}>
+                      <h3>Add Availability</h3>
+                      <label>
+                        Type
+                        <select
+                          name="type"
+                          value={availabilityForm.type}
+                          onChange={handleAvailabilityFieldChange}
+                        >
+                          <option value="WEEKLY">Weekly</option>
+                          <option value="ONE_TIME">One-time</option>
+                        </select>
+                      </label>
+                      {availabilityForm.type === 'WEEKLY' ? (
+                        <>
+                          <label>
+                            Day of Week
+                            <select
+                              name="dayOfWeek"
+                              value={availabilityForm.dayOfWeek}
+                              onChange={handleAvailabilityFieldChange}
+                            >
+                              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(
+                                (day, index) => (
+                                  <option key={day} value={index}>
+                                    {day}
+                                  </option>
+                                )
+                              )}
+                            </select>
+                          </label>
+                          <label>
+                            Start Time
+                            <input
+                              type="time"
+                              name="startTime"
+                              value={availabilityForm.startTime}
+                              onChange={handleAvailabilityFieldChange}
+                              required
+                            />
+                          </label>
+                          <label>
+                            End Time
+                            <input
+                              type="time"
+                              name="endTime"
+                              value={availabilityForm.endTime}
+                              onChange={handleAvailabilityFieldChange}
+                              required
+                            />
+                          </label>
+                        </>
+                      ) : (
+                        <>
+                          <label>
+                            Start Date & Time
+                            <input
+                              type="datetime-local"
+                              name="startDateTime"
+                              value={availabilityForm.startDateTime}
+                              onChange={handleAvailabilityFieldChange}
+                              required
+                            />
+                          </label>
+                          <label>
+                            End Date & Time
+                            <input
+                              type="datetime-local"
+                              name="endDateTime"
+                              value={availabilityForm.endDateTime}
+                              onChange={handleAvailabilityFieldChange}
+                              required
+                            />
+                          </label>
+                        </>
+                      )}
+                      <button type="submit" disabled={trainerLoading}>
+                        {trainerLoading ? 'Saving…' : 'Add Slot'}
+                      </button>
+                    </form>
 
-            <section className="card">
-              <h2>Fitness Goals</h2>
-              {goalMessage && (
-                <p className="status success">{goalMessage}</p>
-              )}
-              {goals.length ? (
-                <ul className="list">
-                  {goals.map((goal) => (
-                    <li key={goal.id}>
-                      <strong>{goal.value}</strong> ·{' '}
-                      {goal.active ? 'Active' : 'Inactive'} ·{' '}
-                      {goal.recordedAt
-                        ? new Date(goal.recordedAt).toLocaleDateString()
-                        : 'No date'}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>No goals recorded yet.</p>
-              )}
-              <form
-                className="stack"
-                onSubmit={async (event) => {
-                  event.preventDefault();
-                  if (!session?.token) return;
-                  setGoalSaving(true);
-                  setGoalMessage(null);
-                  try {
-                    const payload: Record<string, unknown> = {
-                      value: goalForm.value,
-                      active: goalForm.active,
-                    };
-                    if (goalForm.recordedAt) {
-                      payload.recordedAt = goalForm.recordedAt;
-                    }
-                    const created = await postJSON<FitnessGoal>(
-                      `/api/members/${session.member.id}/goals`,
-                      payload,
-                      { token: session.token }
-                    );
-                    setGoals((prev) => [created, ...prev]);
-                    setGoalForm({ value: '', active: true, recordedAt: '' });
-                    setGoalMessage('Goal added successfully');
-                  } catch (err) {
-                    setGoalMessage(
-                      err instanceof Error
-                        ? err.message
-                        : 'Failed to add goal'
-                    );
-                  } finally {
-                    setGoalSaving(false);
-                  }
-                }}
-              >
-                <h3>Add Goal</h3>
-                <label>
-                  Goal
-                  <input
-                    name="value"
-                    value={goalForm.value}
-                    onChange={handleGoalFieldChange}
-                    required
-                  />
-                </label>
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    name="active"
-                    checked={goalForm.active}
-                    onChange={handleGoalFieldChange}
-                  />
-                  Active
-                </label>
-                <label>
-                  Recorded At
-                  <input
-                    type="date"
-                    name="recordedAt"
-                    value={goalForm.recordedAt}
-                    onChange={handleGoalFieldChange}
-                  />
-                </label>
-                <button type="submit" disabled={goalSaving}>
-                  {goalSaving ? 'Saving…' : 'Add Goal'}
-                </button>
-              </form>
-            </section>
-
-            <section className="card">
-              <h2>Health Metrics</h2>
-              {metricMessage && (
-                <p className="status success">{metricMessage}</p>
-              )}
-              {metrics.length ? (
-                <ul className="list">
-                  {metrics.map((metric) => (
-                    <li key={metric.id}>
-                      <strong>{metric.metricType}</strong> · {metric.value}{' '}
-                      {metric.unit ?? ''}
-                      {' · '}
-                      {metric.recordedAt
-                        ? new Date(metric.recordedAt).toLocaleString()
-                        : 'No timestamp'}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>No metrics recorded yet.</p>
-              )}
-              <form
-                className="stack"
-                onSubmit={async (event) => {
-                  event.preventDefault();
-                  if (!session?.token) return;
-                  setMetricSaving(true);
-                  setMetricMessage(null);
-                  const valueNumber = Number(metricForm.value);
-                  if (Number.isNaN(valueNumber)) {
-                    setMetricMessage('Metric value must be a number');
-                    setMetricSaving(false);
-                    return;
-                  }
-                  try {
-                    const payload: Record<string, unknown> = {
-                      metricType: metricForm.metricType,
-                      value: valueNumber,
-                      unit: metricForm.unit || null,
-                    };
-                    if (metricForm.recordedAt) {
-                      payload.recordedAt = metricForm.recordedAt;
-                    }
-                    const created = await postJSON<HealthMetric>(
-                      `/api/members/${session.member.id}/metrics`,
-                      payload,
-                      { token: session.token }
-                    );
-                    setMetrics((prev) => [created, ...prev]);
-                    setMetricForm({
-                      metricType: '',
-                      value: '',
-                      unit: '',
-                      recordedAt: '',
-                    });
-                    setMetricMessage('Metric added successfully');
-                  } catch (err) {
-                    setMetricMessage(
-                      err instanceof Error
-                        ? err.message
-                        : 'Failed to add metric'
-                    );
-                  } finally {
-                    setMetricSaving(false);
-                  }
-                }}
-              >
-                <h3>Add Metric</h3>
-                <label>
-                  Type
-                  <input
-                    name="metricType"
-                    value={metricForm.metricType}
-                    onChange={handleMetricFieldChange}
-                    required
-                    placeholder="WEIGHT, HEART_RATE, etc."
-                  />
-                </label>
-                <label>
-                  Value
-                  <input
-                    name="value"
-                    type="number"
-                    step="any"
-                    value={metricForm.value}
-                    onChange={handleMetricFieldChange}
-                    required
-                  />
-                </label>
-                <label>
-                  Unit
-                  <input
-                    name="unit"
-                    value={metricForm.unit}
-                    onChange={handleMetricFieldChange}
-                    placeholder="kg, bpm, %"
-                  />
-                </label>
-                <label>
-                  Recorded At
-                  <input
-                    type="datetime-local"
-                    name="recordedAt"
-                    value={metricForm.recordedAt}
-                    onChange={handleMetricFieldChange}
-                  />
-                </label>
-                <button type="submit" disabled={metricSaving}>
-                  {metricSaving ? 'Saving…' : 'Add Metric'}
-                </button>
-              </form>
-            </section>
+                    <h3>Upcoming Schedule</h3>
+                    {schedule ? (
+                      schedule.sessions.length || schedule.classes.length ? (
+                        <div className="schedule-grid">
+                          {buildScheduleEntries(schedule).map((entry) => (
+                            <div key={entry.id} className="schedule-card">
+                              <span className={`badge ${entry.kind.toLowerCase()}`}>
+                                {entry.kind === 'SESSION' ? 'PT Session' : 'Class'}
+                              </span>
+                              <h4>{entry.title}</h4>
+                              <p>{entry.subTitle}</p>
+                              <p className="time-range">
+                                {formatDate(entry.startTime)} ·{' '}
+                                {formatTime(entry.startTime)} -{' '}
+                                {formatTime(entry.endTime)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p>No sessions or classes scheduled.</p>
+                      )
+                    ) : (
+                      <p>No schedule data yet.</p>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
           </>
         )}
       </main>
     </div>
+  );
+}
+
+function weekdayName(value: number | null): string {
+  if (value == null) return 'N/A';
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][value] ?? 'N/A';
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return 'N/A';
+  return new Date(value).toLocaleDateString();
+}
+
+function formatTime(value: string | null): string {
+  if (!value) return 'N/A';
+  return new Date(value).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function buildScheduleEntries(schedule: TrainerSchedule): ScheduleEntry[] {
+  const sessionEntries: ScheduleEntry[] = schedule.sessions.map((session) => ({
+    id: `session-${session.id}`,
+    kind: 'SESSION',
+    title: `Member #${session.memberId}`,
+    subTitle: session.roomId ? `Room ${session.roomId}` : 'Room TBD',
+    startTime: session.startTime,
+    endTime: session.endTime,
+  }));
+
+  const classEntries: ScheduleEntry[] = schedule.classes.map((cls) => ({
+    id: `class-${cls.id}`,
+    kind: 'CLASS',
+    title: cls.name,
+    subTitle: `Room ${cls.roomId} · Capacity ${cls.capacity}`,
+    startTime: cls.startTime,
+    endTime: cls.endTime,
+  }));
+
+  return [...sessionEntries, ...classEntries].sort(
+    (a, b) =>
+      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
   );
 }
 

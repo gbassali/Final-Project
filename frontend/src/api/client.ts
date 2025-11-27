@@ -67,3 +67,10 @@ export function patchJSON<TResponse>(
   return request<TResponse>(path, { ...options, method: 'PATCH', body });
 }
 
+export function deleteJSON<TResponse = unknown>(
+  path: string,
+  options?: Omit<RequestOptions, 'method' | 'body'>
+) {
+  return request<TResponse>(path, { ...options, method: 'DELETE' });
+}
+
