@@ -35,7 +35,6 @@ model Member {
   fitnessGoals       FitnessGoals[]
   ptSessions         Session[]
   classRegistrations ClassRegistration[]
-  pastClassCount     Int?   //past classes attended
 }
 
 /*

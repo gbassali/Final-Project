@@ -175,10 +175,6 @@ function buildMemberCreateInput(body: any): Prisma.MemberCreateInput {
     email: body.email,
     password: body.password,
     phone: body.phone ?? null,
-    pastClassCount:
-      typeof body.pastClassCount === 'number'
-        ? body.pastClassCount
-        : undefined,
   };
 
   if (body.dateOfBirth) {
@@ -195,7 +191,6 @@ function buildMemberUpdateInput(body: any): Prisma.MemberUpdateInput {
   if (body.email !== undefined) data.email = body.email;
   if (body.password !== undefined) data.password = body.password;
   if (body.phone !== undefined) data.phone = body.phone ?? null;
-  if (body.pastClassCount !== undefined) data.pastClassCount = body.pastClassCount;
   if (body.dateOfBirth !== undefined) {
     data.dateOfBirth =
       body.dateOfBirth === null || body.dateOfBirth === ''
