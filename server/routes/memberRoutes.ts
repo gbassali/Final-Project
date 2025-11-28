@@ -18,7 +18,7 @@ import { CreateFitnessGoalsInput } from '../../models/fitnessGoalModel';
 import { CreateHealthMetricInput } from '../../models/healthMetricModel';
 import { requireAuth } from './authRoutes';
 import { listSessionsForMemberWithDetails } from '../../models/sessionModel';
-import { bookPtSession } from '../../app/ptSessionSchedulingService';
+import { bookPtSession, cancelPtSession, reschedulePtSession } from '../../app/ptSessionSchedulingService';
 
 const router = Router();
 
@@ -156,6 +156,37 @@ router.post('/:memberId/sessions', async (req, res, next) => {
       endTime: data.endTime,
     });
     res.status(201).json(session);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Cancel a PT session
+router.delete('/:memberId/sessions/:sessionId', async (req, res, next) => {
+  try {
+    const memberId = parseId(req.params.memberId, 'memberId');
+    const sessionId = parseId(req.params.sessionId, 'sessionId');
+    const deleted = await cancelPtSession(sessionId, memberId);
+    res.json({ message: 'Session cancelled', session: deleted });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Reschedule a PT session
+router.patch('/:memberId/sessions/:sessionId', async (req, res, next) => {
+  try {
+    const memberId = parseId(req.params.memberId, 'memberId');
+    const sessionId = parseId(req.params.sessionId, 'sessionId');
+    const data = buildPtSessionRescheduleInput(req.body);
+    const session = await reschedulePtSession({
+      sessionId,
+      newStartTime: data.startTime,
+      newEndTime: data.endTime,
+      newTrainerId: data.trainerId,
+      newRoomId: data.roomId,
+    });
+    res.json(session);
   } catch (error) {
     next(error);
   }
@@ -338,5 +369,26 @@ function parseNumericId(value: unknown, field: string): number {
     throw error;
   }
   return parsed;
+}
+
+function buildPtSessionRescheduleInput(body: any) {
+  if (!body?.startTime || !body?.endTime) {
+    const error = new Error('startTime and endTime are required');
+    (error as any).status = 400;
+    throw error;
+  }
+  const startTime = parseDateString(body.startTime, 'startTime');
+  const endTime = parseDateString(body.endTime, 'endTime');
+  if (startTime >= endTime) {
+    const error = new Error('startTime must be before endTime');
+    (error as any).status = 400;
+    throw error;
+  }
+  return {
+    startTime,
+    endTime,
+    trainerId: body.trainerId ? parseNumericId(body.trainerId, 'trainerId') : undefined,
+    roomId: body.roomId ? parseNumericId(body.roomId, 'roomId') : undefined,
+  };
 }
 

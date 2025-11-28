@@ -1,5 +1,5 @@
 import { Session, AvailabilityType } from "../generated/prisma/client";
-import { createSession, getSessionById, updateSession } from "../models/sessionModel";
+import { createSession, getSessionById, updateSession, deleteSession } from "../models/sessionModel";
 import { listTrainerAvailabilitiesForTrainer } from "../models/trainerAvailabilityModel";
 import { getMemberById } from "../models/memberModel";
 import { getTrainerById } from "../models/trainerModel";
@@ -174,6 +174,25 @@ async function ensureTrainerAvailableForSlot(trainerId: number, start: Date, end
       "Trainer is not available during the requested time."
     );
   }
+}
+
+export async function cancelPtSession(sessionId: number, memberId: number): Promise<Session> {
+  const existing = await getSessionById(sessionId);
+  if (!existing) {
+    throw new Error(`Session with id ${sessionId} not found.`);
+  }
+
+  // Ensure the member owns this session
+  if (existing.memberId !== memberId) {
+    throw new Error("You can only cancel your own sessions.");
+  }
+
+  // Check if session is in the past
+  if (new Date(existing.startTime) < new Date()) {
+    throw new Error("Cannot cancel a session that has already started or passed.");
+  }
+
+  return deleteSession(sessionId);
 }
 
 //move helpers into generic servicess!!

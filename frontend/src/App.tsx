@@ -117,14 +117,15 @@ const emptyLoginForm: LoginPayload = {
 
 const SESSION_KEY = 'member-session';
 
-type SectionKey = 'profile' | 'goals' | 'metrics' | 'sessions' | 'trainer';
+type SectionKey = 'profile' | 'goals' | 'metrics' | 'sessions' | 'trainer' | 'classes';
 
-const sections: { key: SectionKey; label: string }[] = [
-  { key: 'profile', label: 'Profile' },
-  { key: 'goals', label: 'Fitness Goals' },
-  { key: 'metrics', label: 'Health Metrics' },
-  { key: 'sessions', label: 'PT Sessions' },
-  { key: 'trainer', label: 'Trainer Tools' },
+const sections: { key: SectionKey; label: string; icon: string }[] = [
+  { key: 'profile', label: 'Profile', icon: '👤' },
+  { key: 'goals', label: 'Fitness Goals', icon: '🎯' },
+  { key: 'metrics', label: 'Health Metrics', icon: '📊' },
+  { key: 'sessions', label: 'PT Sessions', icon: '🏋️' },
+  { key: 'classes', label: 'Group Classes', icon: '👥' },
+  { key: 'trainer', label: 'Trainer Tools', icon: '🔧' },
 ];
 
 const PT_TIME_SLOTS = [
@@ -159,8 +160,8 @@ type ScheduleEntry = {
 
 function App() {
   const [session, setSession] = useState<SessionState | null>(null);
-  const [activeSection, setActiveSection] =
-    useState<SectionKey>('profile');
+  // null = show dashboard, otherwise show overlay for that section
+  const [activeOverlay, setActiveOverlay] = useState<SectionKey | null>(null);
 
   const [loginForm, setLoginForm] = useState<LoginPayload>(emptyLoginForm);
   const [loginSubmitting, setLoginSubmitting] = useState(false);
@@ -253,6 +254,20 @@ function App() {
   >('success');
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionSaving, setSessionSaving] = useState(false);
+  // Reschedule state
+  const [rescheduleSessionId, setRescheduleSessionId] = useState<number | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleSlots, setRescheduleSlots] = useState<
+    { trainerId: number; trainerName: string; startTime: string; endTime: string }[]
+  >([]);
+  const [rescheduleSelectedSlot, setRescheduleSelectedSlot] = useState<{
+    trainerId: number;
+    trainerName: string;
+    startTime: string;
+    endTime: string;
+  } | null>(null);
+  const [rescheduleRoomId, setRescheduleRoomId] = useState('');
+  const [rescheduleSlotsLoading, setRescheduleSlotsLoading] = useState(false);
 
   useEffect(() => {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -703,6 +718,128 @@ function App() {
     }
   };
 
+  const handleCancelSession = async (sessionId: number) => {
+    if (!session?.token) return;
+    if (!confirm('Are you sure you want to cancel this session?')) return;
+
+    setSessionSaving(true);
+    setSessionMessage(null);
+    try {
+      await deleteJSON(
+        `/api/members/${session.member.id}/sessions/${sessionId}`,
+        { token: session.token }
+      );
+      setSessionMessage('Session cancelled successfully.');
+      setSessionMessageTone('success');
+      await loadMemberSessions();
+    } catch (err) {
+      setSessionMessage(
+        err instanceof Error ? err.message : 'Failed to cancel session'
+      );
+      setSessionMessageTone('error');
+    } finally {
+      setSessionSaving(false);
+    }
+  };
+
+  const handleStartReschedule = (sessionId: number) => {
+    setRescheduleSessionId(sessionId);
+    setRescheduleDate('');
+    setRescheduleSlots([]);
+    setRescheduleSelectedSlot(null);
+    setRescheduleRoomId('');
+  };
+
+  const handleCancelReschedule = () => {
+    setRescheduleSessionId(null);
+    setRescheduleDate('');
+    setRescheduleSlots([]);
+    setRescheduleSelectedSlot(null);
+    setRescheduleRoomId('');
+  };
+
+  const loadRescheduleSlots = async (date: string) => {
+    if (!session?.token || !date) {
+      setRescheduleSlots([]);
+      return;
+    }
+    setRescheduleSlotsLoading(true);
+    try {
+      const data = await getJSON<{
+        date: string;
+        slots: { trainerId: number; trainerName: string; startTime: string; endTime: string }[];
+      }>(`/api/trainers/available-slots?date=${date}`, { token: session.token });
+      setRescheduleSlots(data.slots);
+    } catch (err) {
+      console.error('Failed to load reschedule slots', err);
+      setRescheduleSlots([]);
+    } finally {
+      setRescheduleSlotsLoading(false);
+    }
+  };
+
+  const handleRescheduleDateChange = async (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    const date = event.target.value;
+    setRescheduleDate(date);
+    setRescheduleSelectedSlot(null);
+    setRescheduleRoomId('');
+    if (date) {
+      await loadRescheduleSlots(date);
+    } else {
+      setRescheduleSlots([]);
+    }
+  };
+
+  const handleRescheduleSlotSelect = (slot: {
+    trainerId: number;
+    trainerName: string;
+    startTime: string;
+    endTime: string;
+  }) => {
+    setRescheduleSelectedSlot(slot);
+    setRescheduleRoomId('');
+  };
+
+  const handleConfirmReschedule = async () => {
+    if (!session?.token || !rescheduleSessionId || !rescheduleSelectedSlot || !rescheduleRoomId || !rescheduleDate) {
+      setSessionMessage('Please select a new slot and room');
+      setSessionMessageTone('error');
+      return;
+    }
+
+    setSessionSaving(true);
+    setSessionMessage(null);
+    try {
+      const startISO = `${rescheduleDate}T${rescheduleSelectedSlot.startTime}:00`;
+      const endISO = `${rescheduleDate}T${rescheduleSelectedSlot.endTime}:00`;
+
+      const payload = {
+        trainerId: rescheduleSelectedSlot.trainerId,
+        roomId: Number(rescheduleRoomId),
+        startTime: startISO,
+        endTime: endISO,
+      };
+      await patchJSON(
+        `/api/members/${session.member.id}/sessions/${rescheduleSessionId}`,
+        payload,
+        { token: session.token }
+      );
+      setSessionMessage('Session rescheduled successfully!');
+      setSessionMessageTone('success');
+      handleCancelReschedule();
+      await loadMemberSessions();
+    } catch (err) {
+      setSessionMessage(
+        err instanceof Error ? err.message : 'Failed to reschedule session'
+      );
+      setSessionMessageTone('error');
+    } finally {
+      setSessionSaving(false);
+    }
+  };
+
   const isAuthenticated = Boolean(session?.token);
   const now = Date.now();
   const upcomingPtSessions = memberSessions.filter(
@@ -718,6 +855,16 @@ function App() {
     acc[key].push(slot);
     return acc;
   }, {} as Record<string, typeof availableSlots>);
+
+  // Group reschedule slots by time
+  const rescheduleSlotsByTime = rescheduleSlots.reduce((acc, slot) => {
+    const key = `${slot.startTime}-${slot.endTime}`;
+    if (!acc[key]) {
+      acc[key] = [];
+    }
+    acc[key].push(slot);
+    return acc;
+  }, {} as Record<string, typeof rescheduleSlots>);
 
   // Preview for selected slot
   const selectedSlotPreview = selectedSlot && bookingDate ? {
@@ -857,31 +1004,135 @@ function App() {
 
         {isAuthenticated && (
           <>
-            <div className="section-tabs">
-              {sections.map((section) => (
-                <button
-                  key={section.key}
-                  className={
-                    activeSection === section.key
-                      ? 'section-tab active'
-                      : 'section-tab'
-                  }
-                  type="button"
-                  onClick={() => setActiveSection(section.key)}
-                >
-                  {section.label}
+            {/* Dashboard - always visible when authenticated */}
+            <div className="dashboard">
+              <div className="dashboard-header">
+                <h2>Welcome back, {profile?.name ?? session?.member?.name ?? 'Member'}!</h2>
+                <button type="button" className="btn-logout" onClick={handleLogout}>
+                  Logout
                 </button>
-              ))}
-              <button
-                className="section-tab"
-                type="button"
-                onClick={handleLogout}
-              >
-                Logout
-              </button>
+              </div>
+
+              {/* Quick Stats Cards */}
+              <div className="dashboard-stats">
+                <div className="stat-card">
+                  <div className="stat-icon">🎯</div>
+                  <div className="stat-content">
+                    <div className="stat-value">{goals.filter(g => g.active).length}</div>
+                    <div className="stat-label">Active Goals</div>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-icon">📊</div>
+                  <div className="stat-content">
+                    <div className="stat-value">{metrics.length}</div>
+                    <div className="stat-label">Health Metrics</div>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-icon">🏋️</div>
+                  <div className="stat-content">
+                    <div className="stat-value">{upcomingPtSessions.length}</div>
+                    <div className="stat-label">Upcoming Sessions</div>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-icon">📅</div>
+                  <div className="stat-content">
+                    <div className="stat-value">
+                      {memberSessions.filter(s => new Date(s.endTime).getTime() < now).length}
+                    </div>
+                    <div className="stat-label">Past Sessions</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Latest Health Metric */}
+              {metrics.length > 0 && (
+                <div className="dashboard-section">
+                  <h3>Latest Health Metric</h3>
+                  <div className="latest-metric">
+                    <strong>{metrics[metrics.length - 1].metricType}</strong>:{' '}
+                    {metrics[metrics.length - 1].value}
+                    {metrics[metrics.length - 1].unit && ` ${metrics[metrics.length - 1].unit}`}
+                    <span className="metric-date">
+                      {metrics[metrics.length - 1].recordedAt
+                        ? ` (${formatDate(metrics[metrics.length - 1].recordedAt!)})`
+                        : ''}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Active Goals Preview */}
+              {goals.filter(g => g.active).length > 0 && (
+                <div className="dashboard-section">
+                  <h3>Active Goals</h3>
+                  <ul className="goals-preview">
+                    {goals.filter(g => g.active).slice(0, 3).map(goal => (
+                      <li key={goal.id}>{goal.value}</li>
+                    ))}
+                    {goals.filter(g => g.active).length > 3 && (
+                      <li className="more-link" onClick={() => setActiveOverlay('goals')}>
+                        +{goals.filter(g => g.active).length - 3} more...
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+
+              {/* Upcoming Sessions Preview */}
+              {upcomingPtSessions.length > 0 && (
+                <div className="dashboard-section">
+                  <h3>Upcoming Sessions</h3>
+                  <ul className="sessions-preview">
+                    {upcomingPtSessions.slice(0, 3).map(s => (
+                      <li key={s.id}>
+                        <strong>{s.trainer?.name ?? 'Trainer TBD'}</strong> ·{' '}
+                        {formatDate(s.startTime)} {formatTime(s.startTime)}
+                      </li>
+                    ))}
+                    {upcomingPtSessions.length > 3 && (
+                      <li className="more-link" onClick={() => setActiveOverlay('sessions')}>
+                        +{upcomingPtSessions.length - 3} more...
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+
+              {/* Quick Actions */}
+              <div className="dashboard-actions">
+                <h3>Quick Actions</h3>
+                <div className="action-grid">
+                  {sections.map((section) => (
+                    <button
+                      key={section.key}
+                      type="button"
+                      className="action-card"
+                      onClick={() => setActiveOverlay(section.key)}
+                    >
+                      <span className="action-icon">{section.icon}</span>
+                      <span className="action-label">{section.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {activeSection === 'profile' && (
+            {/* Overlay Modal for Sections */}
+            {activeOverlay && (
+              <div className="overlay-backdrop" onClick={() => setActiveOverlay(null)}>
+                <div className="overlay-content" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="overlay-close"
+                    onClick={() => setActiveOverlay(null)}
+                  >
+                    ×
+                  </button>
+
+                  {activeOverlay === 'profile' && (
               <section className="card">
                 <div className="card-header">
                   <h2>Profile</h2>
@@ -996,7 +1247,7 @@ function App() {
               </section>
             )}
 
-            {activeSection === 'goals' && (
+            {activeOverlay === 'goals' && (
               <section className="card">
                 <h2>Fitness Goals</h2>
                 {goalMessage && (
@@ -1086,7 +1337,7 @@ function App() {
               </section>
             )}
 
-            {activeSection === 'metrics' && (
+            {activeOverlay === 'metrics' && (
               <section className="card">
                 <h2>Health Metrics</h2>
                 {metricMessage && (
@@ -1201,7 +1452,7 @@ function App() {
               </section>
             )}
 
-            {activeSection === 'sessions' && (
+            {activeOverlay === 'sessions' && (
               <section className="card">
                 <div className="card-header">
                   <h2>PT Sessions</h2>
@@ -1222,24 +1473,129 @@ function App() {
                 {sessionsLoading && memberSessions.length === 0 ? (
                   <p>Loading sessions…</p>
                 ) : upcomingPtSessions.length ? (
-                  <ul className="list">
-                    {upcomingPtSessions.map((session) => (
-                      <li key={session.id}>
-                        <strong>
-                          {session.trainer?.name ??
-                            (session.trainerId
-                              ? `Trainer #${session.trainerId}`
-                              : 'Trainer TBD')}
-                        </strong>{' '}
-                        ·{' '}
-                        {session.room?.name
-                          ? `Room ${session.room.name}`
-                          : session.roomId
-                          ? `Room #${session.roomId}`
-                          : 'Room TBD'}{' '}
-                        · {formatDate(session.startTime)}{' '}
-                        {formatTime(session.startTime)} -{' '}
-                        {formatTime(session.endTime)}
+                  <ul className="session-list">
+                    {upcomingPtSessions.map((s) => (
+                      <li key={s.id} className="session-item">
+                        <div className="session-info">
+                          <strong>
+                            {s.trainer?.name ??
+                              (s.trainerId
+                                ? `Trainer #${s.trainerId}`
+                                : 'Trainer TBD')}
+                          </strong>{' '}
+                          ·{' '}
+                          {s.room?.name
+                            ? `${s.room.name}`
+                            : s.roomId
+                            ? `Room #${s.roomId}`
+                            : 'Room TBD'}{' '}
+                          · {formatDate(s.startTime)}{' '}
+                          {formatTime(s.startTime)} -{' '}
+                          {formatTime(s.endTime)}
+                        </div>
+                        <div className="session-actions">
+                          <button
+                            type="button"
+                            className="btn-small btn-secondary"
+                            onClick={() => handleStartReschedule(s.id)}
+                            disabled={sessionSaving || rescheduleSessionId === s.id}
+                          >
+                            Reschedule
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-small btn-danger"
+                            onClick={() => handleCancelSession(s.id)}
+                            disabled={sessionSaving}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                        {rescheduleSessionId === s.id && (
+                          <div className="reschedule-form">
+                            <h4>Reschedule Session</h4>
+                            <label>
+                              New Date
+                              <input
+                                type="date"
+                                value={rescheduleDate}
+                                onChange={handleRescheduleDateChange}
+                                min={new Date().toISOString().split('T')[0]}
+                              />
+                            </label>
+                            {rescheduleDate && (
+                              <>
+                                <h5>Available Slots</h5>
+                                {rescheduleSlotsLoading ? (
+                                  <p>Loading slots…</p>
+                                ) : rescheduleSlots.length === 0 ? (
+                                  <p className="hint">No trainers available on this date.</p>
+                                ) : (
+                                  <div className="slots-grid compact">
+                                    {Object.entries(rescheduleSlotsByTime).map(([timeKey, slots]) => (
+                                      <div key={timeKey} className="time-group">
+                                        <div className="time-group-header">
+                                          {formatSlotRange(slots[0].startTime)}
+                                        </div>
+                                        <div className="time-group-trainers">
+                                          {slots.map((slot) => (
+                                            <button
+                                              key={`${slot.trainerId}-${slot.startTime}`}
+                                              type="button"
+                                              className={`slot-btn ${
+                                                rescheduleSelectedSlot?.trainerId === slot.trainerId &&
+                                                rescheduleSelectedSlot?.startTime === slot.startTime
+                                                  ? 'selected'
+                                                  : ''
+                                              }`}
+                                              onClick={() => handleRescheduleSlotSelect(slot)}
+                                            >
+                                              {slot.trainerName}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                            {rescheduleSelectedSlot && (
+                              <>
+                                <label>
+                                  Room
+                                  <select
+                                    value={rescheduleRoomId}
+                                    onChange={(e) => setRescheduleRoomId(e.target.value)}
+                                  >
+                                    <option value="">Select room</option>
+                                    {rooms.map((room) => (
+                                      <option key={room.id} value={room.id}>
+                                        {room.name} (Cap {room.capacity})
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </>
+                            )}
+                            <div className="reschedule-actions">
+                              <button
+                                type="button"
+                                onClick={handleConfirmReschedule}
+                                disabled={sessionSaving || !rescheduleSelectedSlot || !rescheduleRoomId}
+                              >
+                                {sessionSaving ? 'Saving…' : 'Confirm Reschedule'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={handleCancelReschedule}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -1348,7 +1704,7 @@ function App() {
               </section>
             )}
 
-            {activeSection === 'trainer' && (
+            {activeOverlay === 'trainer' && (
               <section className="card">
                 <h2>Trainer Tools</h2>
                 {trainerMessage && (
@@ -1576,6 +1932,19 @@ function App() {
                   </>
                 )}
               </section>
+            )}
+
+                  {activeOverlay === 'classes' && (
+                    <section className="card">
+                      <h2>Group Classes</h2>
+                      <p className="hint">
+                        Group class registration coming soon! Check back later to register for
+                        fitness classes like HIIT, Yoga, and more.
+                      </p>
+                    </section>
+                  )}
+                </div>
+              </div>
             )}
           </>
         )}
