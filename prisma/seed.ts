@@ -25,11 +25,15 @@ async function main() {
   const admin1 = await prisma.adminStaff.create({
     data: {
       name: 'Sarah Johnson',
+      email: 'admin@gym.com',
+      password: 'admin123',
     },
   });
   const admin2 = await prisma.adminStaff.create({
     data: {
       name: 'Michael Chen',
+      email: 'michael@gym.com',
+      password: 'admin123',
     },
   });
 

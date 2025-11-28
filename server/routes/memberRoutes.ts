@@ -19,6 +19,12 @@ import { CreateHealthMetricInput } from '../../models/healthMetricModel';
 import { requireAuth } from './authRoutes';
 import { listSessionsForMemberWithDetails } from '../../models/sessionModel';
 import { bookPtSession, cancelPtSession, reschedulePtSession } from '../../app/ptSessionSchedulingService';
+import {
+  listUpcomingClassesForMember,
+  registerForClass,
+  cancelClassRegistration,
+  getMemberRegistrations,
+} from '../../app/classRegistrationService';
 
 const router = Router();
 
@@ -187,6 +193,54 @@ router.patch('/:memberId/sessions/:sessionId', async (req, res, next) => {
       newRoomId: data.roomId,
     });
     res.json(session);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ==================== GROUP CLASS REGISTRATION ====================
+
+// List upcoming classes with registration info for member
+router.get('/:memberId/classes', async (req, res, next) => {
+  try {
+    const memberId = parseId(req.params.memberId, 'memberId');
+    const classes = await listUpcomingClassesForMember(memberId);
+    res.json(classes);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get member's class registrations
+router.get('/:memberId/class-registrations', async (req, res, next) => {
+  try {
+    const memberId = parseId(req.params.memberId, 'memberId');
+    const registrations = await getMemberRegistrations(memberId);
+    res.json(registrations);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Register for a class
+router.post('/:memberId/class-registrations', async (req, res, next) => {
+  try {
+    const memberId = parseId(req.params.memberId, 'memberId');
+    const fitnessClassId = parseNumericId(req.body?.fitnessClassId, 'fitnessClassId');
+    const registration = await registerForClass(memberId, fitnessClassId);
+    res.status(201).json(registration);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Cancel a class registration
+router.delete('/:memberId/class-registrations/:registrationId', async (req, res, next) => {
+  try {
+    const memberId = parseId(req.params.memberId, 'memberId');
+    const registrationId = parseId(req.params.registrationId, 'registrationId');
+    const deleted = await cancelClassRegistration(memberId, registrationId);
+    res.json({ message: 'Registration cancelled', registration: deleted });
   } catch (error) {
     next(error);
   }

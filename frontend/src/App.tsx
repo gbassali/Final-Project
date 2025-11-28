@@ -95,6 +95,36 @@ type MemberSessionDetail = {
   } | null;
 };
 
+type FitnessClassWithDetails = {
+  id: number;
+  name: string;
+  trainerId: number;
+  roomId: number;
+  startTime: string;
+  endTime: string;
+  capacity: number;
+  trainer: { id: number; name: string };
+  room: { id: number; name: string };
+  registrationCount: number;
+  isRegistered: boolean;
+};
+
+type ClassRegistrationWithClass = {
+  id: number;
+  memberId: number;
+  fitnessClassId: number;
+  registeredAt: string;
+  fitnessClass: {
+    id: number;
+    name: string;
+    startTime: string;
+    endTime: string;
+    trainerId: number;
+    roomId: number;
+    capacity: number;
+  };
+};
+
 type SessionState = {
   token: string;
   member: MemberSummary;
@@ -269,6 +299,14 @@ function App() {
   const [rescheduleRoomId, setRescheduleRoomId] = useState('');
   const [rescheduleSlotsLoading, setRescheduleSlotsLoading] = useState(false);
 
+  // Group classes state
+  const [fitnessClasses, setFitnessClasses] = useState<FitnessClassWithDetails[]>([]);
+  const [classRegistrations, setClassRegistrations] = useState<ClassRegistrationWithClass[]>([]);
+  const [classesLoading, setClassesLoading] = useState(false);
+  const [classActionLoading, setClassActionLoading] = useState<number | null>(null);
+  const [classMessage, setClassMessage] = useState<string | null>(null);
+  const [classMessageTone, setClassMessageTone] = useState<'success' | 'error'>('success');
+
   useEffect(() => {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return;
@@ -302,6 +340,7 @@ function App() {
       loadTrainers();
       loadRooms();
       loadMemberSessions();
+      loadFitnessClasses();
     } else {
       setProfile(null);
       setGoals([]);
@@ -311,6 +350,8 @@ function App() {
       setSchedule(null);
       setRooms([]);
       setMemberSessions([]);
+      setFitnessClasses([]);
+      setClassRegistrations([]);
       setBookingDate('');
       setAvailableSlots([]);
       setSelectedSlot(null);
@@ -444,6 +485,71 @@ function App() {
       setAvailableSlots([]);
     } finally {
       setSlotsLoading(false);
+    }
+  };
+
+  const loadFitnessClasses = async () => {
+    if (!session?.token) return;
+    setClassesLoading(true);
+    try {
+      const [classes, registrations] = await Promise.all([
+        getJSON<FitnessClassWithDetails[]>(
+          `/api/members/${session.member.id}/classes`,
+          { token: session.token }
+        ),
+        getJSON<ClassRegistrationWithClass[]>(
+          `/api/members/${session.member.id}/class-registrations`,
+          { token: session.token }
+        ),
+      ]);
+      setFitnessClasses(classes);
+      setClassRegistrations(registrations);
+    } catch (err) {
+      console.error('Failed to load fitness classes', err);
+    } finally {
+      setClassesLoading(false);
+    }
+  };
+
+  const handleRegisterForClass = async (classId: number) => {
+    if (!session?.token) return;
+    setClassActionLoading(classId);
+    setClassMessage(null);
+    try {
+      await postJSON(
+        `/api/members/${session.member.id}/class-registrations`,
+        { fitnessClassId: classId },
+        { token: session.token }
+      );
+      setClassMessage('Successfully registered for class!');
+      setClassMessageTone('success');
+      await loadFitnessClasses();
+    } catch (err) {
+      setClassMessage(err instanceof Error ? err.message : 'Failed to register');
+      setClassMessageTone('error');
+    } finally {
+      setClassActionLoading(null);
+    }
+  };
+
+  const handleCancelClassRegistration = async (registrationId: number) => {
+    if (!session?.token) return;
+    if (!confirm('Are you sure you want to cancel this registration?')) return;
+    setClassActionLoading(registrationId);
+    setClassMessage(null);
+    try {
+      await deleteJSON(
+        `/api/members/${session.member.id}/class-registrations/${registrationId}`,
+        { token: session.token }
+      );
+      setClassMessage('Registration cancelled.');
+      setClassMessageTone('success');
+      await loadFitnessClasses();
+    } catch (err) {
+      setClassMessage(err instanceof Error ? err.message : 'Failed to cancel');
+      setClassMessageTone('error');
+    } finally {
+      setClassActionLoading(null);
     }
   };
 
@@ -1936,11 +2042,123 @@ function App() {
 
                   {activeOverlay === 'classes' && (
                     <section className="card">
-                      <h2>Group Classes</h2>
-                      <p className="hint">
-                        Group class registration coming soon! Check back later to register for
-                        fitness classes like HIIT, Yoga, and more.
-                      </p>
+                      <div className="card-header">
+                        <h2>Group Classes</h2>
+                        <button
+                          type="button"
+                          onClick={loadFitnessClasses}
+                          disabled={classesLoading}
+                        >
+                          {classesLoading ? 'Refreshing…' : 'Refresh'}
+                        </button>
+                      </div>
+
+                      {classMessage && (
+                        <p className={`status ${classMessageTone}`}>{classMessage}</p>
+                      )}
+
+                      {/* My Registrations */}
+                      {classRegistrations.filter(r => new Date(r.fitnessClass.startTime) > new Date()).length > 0 && (
+                        <div className="my-registrations">
+                          <h3>Your Registered Classes</h3>
+                          <ul className="registration-list">
+                            {classRegistrations
+                              .filter(r => new Date(r.fitnessClass.startTime) > new Date())
+                              .map((reg) => (
+                                <li key={reg.id} className="registration-item">
+                                  <div className="registration-info">
+                                    <strong>{reg.fitnessClass.name}</strong>
+                                    <span>
+                                      {formatDate(reg.fitnessClass.startTime)} ·{' '}
+                                      {formatTime(reg.fitnessClass.startTime)} -{' '}
+                                      {formatTime(reg.fitnessClass.endTime)}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn-small btn-danger"
+                                    onClick={() => handleCancelClassRegistration(reg.id)}
+                                    disabled={classActionLoading === reg.id}
+                                  >
+                                    {classActionLoading === reg.id ? '…' : 'Cancel'}
+                                  </button>
+                                </li>
+                              ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Available Classes */}
+                      <h3>Available Classes</h3>
+                      {classesLoading && fitnessClasses.length === 0 ? (
+                        <p>Loading classes…</p>
+                      ) : fitnessClasses.length === 0 ? (
+                        <p className="hint">No upcoming classes available.</p>
+                      ) : (
+                        <div className="classes-by-day">
+                          {Object.entries(
+                            fitnessClasses.reduce((acc, cls) => {
+                              const dateKey = new Date(cls.startTime).toDateString();
+                              if (!acc[dateKey]) acc[dateKey] = [];
+                              acc[dateKey].push(cls);
+                              return acc;
+                            }, {} as Record<string, FitnessClassWithDetails[]>)
+                          ).map(([dateKey, classes]) => (
+                            <div key={dateKey} className="day-group">
+                              <h4 className="day-header">
+                                📅 {new Date(dateKey).toLocaleDateString(undefined, {
+                                  weekday: 'long',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </h4>
+                              <div className="class-cards">
+                                {classes.map((cls) => {
+                                  const isFull = cls.registrationCount >= cls.capacity;
+                                  const spotsLeft = cls.capacity - cls.registrationCount;
+                                  return (
+                                    <div
+                                      key={cls.id}
+                                      className={`class-card ${cls.isRegistered ? 'registered' : ''} ${isFull ? 'full' : ''}`}
+                                    >
+                                      <div className="class-name">{cls.name}</div>
+                                      <div className="class-time">
+                                        {formatTime(cls.startTime)} - {formatTime(cls.endTime)}
+                                      </div>
+                                      <div className="class-details">
+                                        <span>👤 {cls.trainer.name}</span>
+                                        <span>📍 {cls.room.name}</span>
+                                      </div>
+                                      <div className={`class-capacity ${isFull ? 'full' : ''}`}>
+                                        {isFull
+                                          ? `FULL (${cls.capacity}/${cls.capacity})`
+                                          : `${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} left`}
+                                      </div>
+                                      {cls.isRegistered ? (
+                                        <div className="registered-badge">✓ Registered</div>
+                                      ) : isFull ? (
+                                        <button type="button" className="btn-full" disabled>
+                                          Full
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="btn-register"
+                                          onClick={() => handleRegisterForClass(cls.id)}
+                                          disabled={classActionLoading === cls.id}
+                                        >
+                                          {classActionLoading === cls.id ? 'Registering…' : 'Register'}
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </section>
                   )}
                 </div>
