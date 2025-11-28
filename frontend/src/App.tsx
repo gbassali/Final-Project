@@ -145,6 +145,9 @@ const PT_TIME_SLOTS = [
   '20:00',
 ];
 
+// Same slots for trainer availability
+const AVAILABILITY_TIME_SLOTS = PT_TIME_SLOTS;
+
 type ScheduleEntry = {
   id: string;
   kind: 'SESSION' | 'CLASS';
@@ -162,6 +165,20 @@ function App() {
   const [loginForm, setLoginForm] = useState<LoginPayload>(emptyLoginForm);
   const [loginSubmitting, setLoginSubmitting] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+
+  const [showRegister, setShowRegister] = useState(false);
+  const [registerForm, setRegisterForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    phone: '',
+    dateOfBirth: '',
+  });
+  const [registerSubmitting, setRegisterSubmitting] = useState(false);
+  const [registerMessage, setRegisterMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [profileForm, setProfileForm] = useState({
@@ -208,20 +225,28 @@ function App() {
     dayOfWeek: 1,
     startTime: '09:00',
     endTime: '12:00',
-    startDateTime: '',
-    endDateTime: '',
+    // One-time: date + start hour slot (end auto-calculated)
+    oneTimeDate: '',
+    oneTimeStartHour: '',
   });
   const [trainerLoading, setTrainerLoading] = useState(false);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [memberSessions, setMemberSessions] = useState<MemberSessionDetail[]>(
     []
   );
-  const [sessionForm, setSessionForm] = useState({
-    trainerId: '',
-    roomId: '',
-    date: '',
-    timeSlot: '',
-  });
+  // Date-first booking flow
+  const [bookingDate, setBookingDate] = useState('');
+  const [availableSlots, setAvailableSlots] = useState<
+    { trainerId: number; trainerName: string; startTime: string; endTime: string }[]
+  >([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<{
+    trainerId: number;
+    trainerName: string;
+    startTime: string;
+    endTime: string;
+  } | null>(null);
+  const [bookingRoomId, setBookingRoomId] = useState('');
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [sessionMessageTone, setSessionMessageTone] = useState<
     'success' | 'error'
@@ -271,12 +296,10 @@ function App() {
       setSchedule(null);
       setRooms([]);
       setMemberSessions([]);
-      setSessionForm({
-        trainerId: '',
-        roomId: '',
-        date: '',
-        timeSlot: '',
-      });
+      setBookingDate('');
+      setAvailableSlots([]);
+      setSelectedSlot(null);
+      setBookingRoomId('');
       setSessionMessage(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -389,6 +412,26 @@ function App() {
     }
   };
 
+  const loadAvailableSlots = async (date: string) => {
+    if (!session?.token || !date) {
+      setAvailableSlots([]);
+      return;
+    }
+    setSlotsLoading(true);
+    try {
+      const data = await getJSON<{
+        date: string;
+        slots: { trainerId: number; trainerName: string; startTime: string; endTime: string }[];
+      }>(`/api/trainers/available-slots?date=${date}`, { token: session.token });
+      setAvailableSlots(data.slots);
+    } catch (err) {
+      console.error('Failed to load available slots', err);
+      setAvailableSlots([]);
+    } finally {
+      setSlotsLoading(false);
+    }
+  };
+
   const handleLoginChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
     setLoginForm((prev) => ({
@@ -435,6 +478,51 @@ function App() {
     } finally {
       setSession(null);
       localStorage.removeItem(SESSION_KEY);
+    }
+  };
+
+  const handleRegisterChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = event.target;
+    setRegisterForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleRegisterSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setRegisterSubmitting(true);
+    setRegisterMessage(null);
+    try {
+      const payload: Record<string, unknown> = {
+        name: registerForm.name.trim(),
+        email: registerForm.email.trim(),
+        password: registerForm.password,
+      };
+      if (registerForm.phone.trim()) {
+        payload.phone = registerForm.phone.trim();
+      }
+      if (registerForm.dateOfBirth) {
+        payload.dateOfBirth = registerForm.dateOfBirth;
+      }
+      await postJSON('/api/members', payload);
+      setRegisterMessage({
+        type: 'success',
+        text: 'Registration successful! You can now log in.',
+      });
+      setRegisterForm({
+        name: '',
+        email: '',
+        password: '',
+        phone: '',
+        dateOfBirth: '',
+      });
+      // Switch back to login after short delay
+      setTimeout(() => setShowRegister(false), 1500);
+    } catch (err) {
+      setRegisterMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Registration failed',
+      });
+    } finally {
+      setRegisterSubmitting(false);
     }
   };
 
@@ -493,8 +581,23 @@ function App() {
         payload.startTime = availabilityForm.startTime;
         payload.endTime = availabilityForm.endTime;
       } else {
-        payload.startDateTime = availabilityForm.startDateTime;
-        payload.endDateTime = availabilityForm.endDateTime;
+        // One-time: build start/end from date + hour slot
+        if (!availabilityForm.oneTimeDate || !availabilityForm.oneTimeStartHour) {
+          setTrainerMessage('Date and time slot are required');
+          setTrainerLoading(false);
+          return;
+        }
+        const start = new Date(
+          `${availabilityForm.oneTimeDate}T${availabilityForm.oneTimeStartHour}`
+        );
+        if (Number.isNaN(start.getTime())) {
+          setTrainerMessage('Invalid date or time');
+          setTrainerLoading(false);
+          return;
+        }
+        const end = new Date(start.getTime() + 60 * 60 * 1000); // +1 hour
+        payload.startDateTime = start.toISOString();
+        payload.endDateTime = end.toISOString();
       }
       const created = await postJSON<TrainerAvailability>(
         `/api/trainers/${selectedTrainerId}/availabilities`,
@@ -503,6 +606,12 @@ function App() {
       );
       setAvailabilities((prev) => [...prev, created]);
       setTrainerMessage('Availability added');
+      // Reset form
+      setAvailabilityForm((prev) => ({
+        ...prev,
+        oneTimeDate: '',
+        oneTimeStartHour: '',
+      }));
     } catch (err) {
       setTrainerMessage(
         err instanceof Error ? err.message : 'Failed to add availability'
@@ -528,60 +637,61 @@ function App() {
     }
   };
 
-  const handleSessionFieldChange = (
-    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  const handleBookingDateChange = async (
+    event: ChangeEvent<HTMLInputElement>
   ) => {
-    const { name, value } = event.target;
-    setSessionForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    const date = event.target.value;
+    setBookingDate(date);
+    setSelectedSlot(null);
+    setBookingRoomId('');
+    if (date) {
+      await loadAvailableSlots(date);
+    } else {
+      setAvailableSlots([]);
+    }
   };
 
-  const handleSessionSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!session?.token) return;
-    if (
-      !sessionForm.trainerId ||
-      !sessionForm.roomId ||
-      !sessionForm.date ||
-      !sessionForm.timeSlot
-    ) {
-      setSessionMessage('Trainer, room, date, and time slot are required');
-      setSessionMessageTone('error');
-      return;
-    }
+  const handleSlotSelect = (slot: {
+    trainerId: number;
+    trainerName: string;
+    startTime: string;
+    endTime: string;
+  }) => {
+    setSelectedSlot(slot);
+    setBookingRoomId('');
+  };
 
-    const start = new Date(`${sessionForm.date}T${sessionForm.timeSlot}`);
-    if (Number.isNaN(start.getTime())) {
-      setSessionMessage('Please choose a valid date and time slot');
+  const handleBookSession = async () => {
+    if (!session?.token || !selectedSlot || !bookingRoomId || !bookingDate) {
+      setSessionMessage('Please select a slot and room');
       setSessionMessageTone('error');
       return;
     }
-    const end = new Date(start.getTime() + 60 * 60 * 1000);
 
     setSessionSaving(true);
     setSessionMessage(null);
     try {
+      const startISO = `${bookingDate}T${selectedSlot.startTime}:00`;
+      const endISO = `${bookingDate}T${selectedSlot.endTime}:00`;
+
       const payload = {
-        trainerId: Number(sessionForm.trainerId),
-        roomId: Number(sessionForm.roomId),
-        startTime: start.toISOString(),
-        endTime: end.toISOString(),
+        trainerId: selectedSlot.trainerId,
+        roomId: Number(bookingRoomId),
+        startTime: startISO,
+        endTime: endISO,
       };
       await postJSON(
         `/api/members/${session.member.id}/sessions`,
         payload,
         { token: session.token }
       );
-      setSessionForm({
-        trainerId: '',
-        roomId: '',
-        date: '',
-        timeSlot: '',
-      });
-      setSessionMessage('Session booked successfully');
+      setSessionMessage('Session booked successfully!');
       setSessionMessageTone('success');
+      // Reset form
+      setBookingDate('');
+      setAvailableSlots([]);
+      setSelectedSlot(null);
+      setBookingRoomId('');
       await loadMemberSessions();
     } catch (err) {
       setSessionMessage(
@@ -596,22 +706,24 @@ function App() {
   const isAuthenticated = Boolean(session?.token);
   const now = Date.now();
   const upcomingPtSessions = memberSessions.filter(
-    (session) => new Date(session.endTime).getTime() >= now
+    (s) => new Date(s.endTime).getTime() >= now
   );
-  const sessionSlotPreview = (() => {
-    if (!sessionForm.date || !sessionForm.timeSlot) {
-      return null;
+
+  // Group available slots by time for display
+  const slotsByTime = availableSlots.reduce((acc, slot) => {
+    const key = `${slot.startTime}-${slot.endTime}`;
+    if (!acc[key]) {
+      acc[key] = [];
     }
-    const startPreview = new Date(`${sessionForm.date}T${sessionForm.timeSlot}`);
-    if (Number.isNaN(startPreview.getTime())) {
-      return null;
-    }
-    const endPreview = new Date(startPreview.getTime() + 60 * 60 * 1000);
-    return {
-      start: startPreview.toISOString(),
-      end: endPreview.toISOString(),
-    };
-  })();
+    acc[key].push(slot);
+    return acc;
+  }, {} as Record<string, typeof availableSlots>);
+
+  // Preview for selected slot
+  const selectedSlotPreview = selectedSlot && bookingDate ? {
+    start: `${bookingDate}T${selectedSlot.startTime}`,
+    end: `${bookingDate}T${selectedSlot.endTime}`,
+  } : null;
 
   return (
     <div className="page">
@@ -625,34 +737,121 @@ function App() {
       <main>
         {!isAuthenticated && (
           <section className="card">
-            <h2>Member Login</h2>
-            <form onSubmit={handleLoginSubmit} className="stack">
-              <label>
-                Email
-                <input
-                  name="email"
-                  type="email"
-                  value={loginForm.email}
-                  onChange={handleLoginChange}
-                  required
-                  placeholder="jane@example.com"
-                />
-              </label>
-              <label>
-                Password
-                <input
-                  name="password"
-                  type="password"
-                  value={loginForm.password}
-                  onChange={handleLoginChange}
-                  required
-                />
-              </label>
-              <button type="submit" disabled={loginSubmitting}>
-                {loginSubmitting ? 'Logging in…' : 'Login'}
+            <div className="auth-tabs">
+              <button
+                type="button"
+                className={`auth-tab ${!showRegister ? 'active' : ''}`}
+                onClick={() => {
+                  setShowRegister(false);
+                  setRegisterMessage(null);
+                }}
+              >
+                Login
               </button>
-              {loginError && <p className="status error">{loginError}</p>}
-            </form>
+              <button
+                type="button"
+                className={`auth-tab ${showRegister ? 'active' : ''}`}
+                onClick={() => {
+                  setShowRegister(true);
+                  setLoginError(null);
+                }}
+              >
+                Register
+              </button>
+            </div>
+
+            {!showRegister ? (
+              <form onSubmit={handleLoginSubmit} className="stack">
+                <label>
+                  Email
+                  <input
+                    name="email"
+                    type="email"
+                    value={loginForm.email}
+                    onChange={handleLoginChange}
+                    required
+                    placeholder="jane@example.com"
+                  />
+                </label>
+                <label>
+                  Password
+                  <input
+                    name="password"
+                    type="password"
+                    value={loginForm.password}
+                    onChange={handleLoginChange}
+                    required
+                  />
+                </label>
+                <button type="submit" disabled={loginSubmitting}>
+                  {loginSubmitting ? 'Logging in…' : 'Login'}
+                </button>
+                {loginError && <p className="status error">{loginError}</p>}
+              </form>
+            ) : (
+              <form onSubmit={handleRegisterSubmit} className="stack">
+                <label>
+                  Name *
+                  <input
+                    name="name"
+                    type="text"
+                    value={registerForm.name}
+                    onChange={handleRegisterChange}
+                    required
+                    placeholder="Jane Doe"
+                  />
+                </label>
+                <label>
+                  Email *
+                  <input
+                    name="email"
+                    type="email"
+                    value={registerForm.email}
+                    onChange={handleRegisterChange}
+                    required
+                    placeholder="jane@example.com"
+                  />
+                </label>
+                <label>
+                  Password *
+                  <input
+                    name="password"
+                    type="password"
+                    value={registerForm.password}
+                    onChange={handleRegisterChange}
+                    required
+                    minLength={4}
+                  />
+                </label>
+                <label>
+                  Phone
+                  <input
+                    name="phone"
+                    type="tel"
+                    value={registerForm.phone}
+                    onChange={handleRegisterChange}
+                    placeholder="555-1234"
+                  />
+                </label>
+                <label>
+                  Date of Birth
+                  <input
+                    name="dateOfBirth"
+                    type="date"
+                    value={registerForm.dateOfBirth}
+                    onChange={handleRegisterChange}
+                  />
+                </label>
+                <button type="submit" disabled={registerSubmitting}>
+                  {registerSubmitting ? 'Registering…' : 'Create Account'}
+                </button>
+                {registerMessage && (
+                  <p className={`status ${registerMessage.type}`}>
+                    {registerMessage.text}
+                  </p>
+                )}
+              </form>
+            )}
           </section>
         )}
 
@@ -1047,77 +1246,105 @@ function App() {
                 ) : (
                   <p>No upcoming PT sessions.</p>
                 )}
-                <form className="stack" onSubmit={handleSessionSubmit}>
+                <div className="booking-flow">
                   <h3>Book a Session</h3>
+                  
+                  {/* Step 1: Pick a date */}
                   <label>
-                    Trainer
-                    <select
-                      name="trainerId"
-                      value={sessionForm.trainerId}
-                      onChange={handleSessionFieldChange}
-                      required
-                    >
-                      <option value="">Select trainer</option>
-                      {trainers.map((trainer) => (
-                        <option key={trainer.id} value={trainer.id}>
-                          {trainer.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Room
-                    <select
-                      name="roomId"
-                      value={sessionForm.roomId}
-                      onChange={handleSessionFieldChange}
-                      required
-                    >
-                      <option value="">Select room</option>
-                      {rooms.map((room) => (
-                        <option key={room.id} value={room.id}>
-                          {room.name} (Cap {room.capacity})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Date
+                    1. Choose a Date
                     <input
                       type="date"
-                      name="date"
-                      value={sessionForm.date}
-                      onChange={handleSessionFieldChange}
-                      required
+                      value={bookingDate}
+                      onChange={handleBookingDateChange}
+                      min={new Date().toISOString().split('T')[0]}
                     />
                   </label>
-                  <label>
-                    Time Slot (1 hour)
-                    <select
-                      name="timeSlot"
-                      value={sessionForm.timeSlot}
-                      onChange={handleSessionFieldChange}
-                      required
-                    >
-                      <option value="">Select time</option>
-                      {PT_TIME_SLOTS.map((slot) => (
-                        <option key={slot} value={slot}>
-                          {formatSlotRange(slot)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {sessionSlotPreview && (
-                    <p className="hint">
-                      Session will run from {formatDate(sessionSlotPreview.start)}{' '}
-                      {formatTime(sessionSlotPreview.start)} to{' '}
-                      {formatTime(sessionSlotPreview.end)}
-                    </p>
+
+                  {/* Step 2: Show available slots */}
+                  {bookingDate && (
+                    <>
+                      <h4>2. Available Trainers & Slots</h4>
+                      {slotsLoading ? (
+                        <p>Loading available slots…</p>
+                      ) : availableSlots.length === 0 ? (
+                        <p className="hint">No trainers available on this date.</p>
+                      ) : (
+                        <div className="slots-grid">
+                          {Object.entries(slotsByTime).map(([timeKey, slots]) => (
+                            <div key={timeKey} className="time-group">
+                              <div className="time-group-header">
+                                {formatSlotRange(slots[0].startTime)}
+                              </div>
+                              <div className="time-group-trainers">
+                                {slots.map((slot) => (
+                                  <button
+                                    key={`${slot.trainerId}-${slot.startTime}`}
+                                    type="button"
+                                    className={`slot-btn ${
+                                      selectedSlot?.trainerId === slot.trainerId &&
+                                      selectedSlot?.startTime === slot.startTime
+                                        ? 'selected'
+                                        : ''
+                                    }`}
+                                    onClick={() => handleSlotSelect(slot)}
+                                  >
+                                    {slot.trainerName}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
-                  <button type="submit" disabled={sessionSaving}>
-                    {sessionSaving ? 'Booking…' : 'Book Session'}
-                  </button>
-                </form>
+
+                  {/* Step 3: Select room */}
+                  {selectedSlot && (
+                    <>
+                      <h4>3. Select Room</h4>
+                      <p className="hint">
+                        Booking with <strong>{selectedSlot.trainerName}</strong> at{' '}
+                        {formatSlotRange(selectedSlot.startTime)}
+                      </p>
+                      <label>
+                        Room
+                        <select
+                          value={bookingRoomId}
+                          onChange={(e) => setBookingRoomId(e.target.value)}
+                        >
+                          <option value="">Select room</option>
+                          {rooms.map((room) => (
+                            <option key={room.id} value={room.id}>
+                              {room.name} (Cap {room.capacity})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  )}
+
+                  {/* Step 4: Confirm */}
+                  {selectedSlot && bookingRoomId && (
+                    <>
+                      {selectedSlotPreview && (
+                        <p className="booking-summary">
+                          <strong>Summary:</strong> {selectedSlot.trainerName} on{' '}
+                          {formatDate(selectedSlotPreview.start)},{' '}
+                          {formatSlotRange(selectedSlot.startTime)} in{' '}
+                          {rooms.find((r) => r.id === Number(bookingRoomId))?.name}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleBookSession}
+                        disabled={sessionSaving}
+                      >
+                        {sessionSaving ? 'Booking…' : 'Confirm Booking'}
+                      </button>
+                    </>
+                  )}
+                </div>
               </section>
             )}
 
@@ -1147,36 +1374,93 @@ function App() {
                 {trainerLoading && <p>Loading trainer data…</p>}
                 {!trainerLoading && (
                   <>
-                    <h3>Availabilities</h3>
-                    {availabilities.length ? (
-                      <ul className="list">
-                        {availabilities.map((slot) => (
-                          <li key={slot.id}>
-                            <span>
-                              {slot.type === 'WEEKLY'
-                                ? `Weekly · ${weekdayName(
-                                    slot.dayOfWeek
-                                  )} ${formatTime(slot.startTime)} - ${formatTime(
-                                    slot.endTime
-                                  )}`
-                                : `One-time · ${formatDate(slot.startDateTime)} ${formatTime(
-                                    slot.startDateTime
-                                  )} - ${formatDate(slot.endDateTime)} ${formatTime(
-                                    slot.endDateTime
-                                  )}`}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteAvailability(slot.id)}
-                            >
-                              Remove
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p>No availability slots yet.</p>
-                    )}
+                    <h3>Weekly Availability</h3>
+                    {(() => {
+                      const weeklySlots = availabilities.filter(
+                        (a) => a.type === 'WEEKLY'
+                      );
+                      const oneTimeSlots = availabilities.filter(
+                        (a) => a.type === 'ONE_TIME'
+                      );
+                      const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+                      return (
+                        <>
+                          <div className="weekly-grid">
+                            {DAYS.map((day, idx) => {
+                              const daySlots = weeklySlots.filter(
+                                (s) => s.dayOfWeek === idx
+                              );
+                              return (
+                                <div key={day} className="weekly-day">
+                                  <div className="weekly-day-header">{day}</div>
+                                  <div className="weekly-day-slots">
+                                    {daySlots.length ? (
+                                      daySlots.map((slot) => (
+                                        <div
+                                          key={slot.id}
+                                          className="weekly-slot"
+                                        >
+                                          <span className="slot-time">
+                                            {formatTimeShort(slot.startTime, true)} -{' '}
+                                            {formatTimeShort(slot.endTime, true)}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className="slot-remove"
+                                            onClick={() =>
+                                              handleDeleteAvailability(slot.id)
+                                            }
+                                            title="Remove"
+                                          >
+                                            ×
+                                          </button>
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <span className="no-slots">—</span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {oneTimeSlots.length > 0 && (
+                            <>
+                              <h4>One-Time Slots</h4>
+                              <ul className="onetime-list">
+                                {oneTimeSlots.map((slot) => (
+                                  <li key={slot.id} className="onetime-slot">
+                                    <span>
+                                      {formatDate(slot.startDateTime)}{' '}
+                                      {formatTimeShort(slot.startDateTime)} -{' '}
+                                      {formatTimeShort(slot.endDateTime)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="slot-remove"
+                                      onClick={() =>
+                                        handleDeleteAvailability(slot.id)
+                                      }
+                                    >
+                                      ×
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </>
+                          )}
+
+                          {availabilities.length === 0 && (
+                            <p className="hint">
+                              No availability set. Add weekly or one-time slots
+                              below.
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
                     <form className="stack" onSubmit={handleAddAvailability}>
                       <h3>Add Availability</h3>
                       <label>
@@ -1232,24 +1516,30 @@ function App() {
                       ) : (
                         <>
                           <label>
-                            Start Date & Time
+                            Date
                             <input
-                              type="datetime-local"
-                              name="startDateTime"
-                              value={availabilityForm.startDateTime}
+                              type="date"
+                              name="oneTimeDate"
+                              value={availabilityForm.oneTimeDate}
                               onChange={handleAvailabilityFieldChange}
                               required
                             />
                           </label>
                           <label>
-                            End Date & Time
-                            <input
-                              type="datetime-local"
-                              name="endDateTime"
-                              value={availabilityForm.endDateTime}
+                            Time Slot (1 hour)
+                            <select
+                              name="oneTimeStartHour"
+                              value={availabilityForm.oneTimeStartHour}
                               onChange={handleAvailabilityFieldChange}
                               required
-                            />
+                            >
+                              <option value="">Select time</option>
+                              {AVAILABILITY_TIME_SLOTS.map((slot) => (
+                                <option key={slot} value={slot}>
+                                  {formatSlotRange(slot)}
+                                </option>
+                              ))}
+                            </select>
                           </label>
                         </>
                       )}
@@ -1294,11 +1584,6 @@ function App() {
   );
 }
 
-function weekdayName(value: number | null): string {
-  if (value == null) return 'N/A';
-  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][value] ?? 'N/A';
-}
-
 function formatDate(value: string | null): string {
   if (!value) return 'N/A';
   return new Date(value).toLocaleDateString();
@@ -1310,6 +1595,19 @@ function formatTime(value: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function formatTimeShort(value: string | null, useUtc = false): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  // For weekly availability, times are stored as UTC (1970-01-01T...Z)
+  // so we need to read UTC hours/minutes to display correctly
+  const h = useUtc ? d.getUTCHours() : d.getHours();
+  const m = useUtc ? d.getUTCMinutes() : d.getMinutes();
+  const ampm = h >= 12 ? 'pm' : 'am';
+  const hour = h % 12 || 12;
+  return m === 0 ? `${hour}${ampm}` : `${hour}:${m.toString().padStart(2, '0')}${ampm}`;
 }
 
 function formatSlotRange(value: string): string {

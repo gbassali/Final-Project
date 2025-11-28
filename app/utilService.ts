@@ -8,8 +8,12 @@ export function convertToDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
-export function minutesSinceMidnight(d: Date): number {
+export function minutesSinceMidnightLocal(d: Date): number {
   return d.getHours() * 60 + d.getMinutes();
+}
+
+export function minutesSinceMidnightUTC(d: Date): number {
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
 }
 
 export function isTimeWithinOneTimeAvailability(start: Date, end: Date, availability: TrainerAvailability): boolean {
@@ -24,20 +28,24 @@ export function isTimeWithinWeeklyAvailability(start: Date, end: Date, availabil
     return false;
   }
 
-  // Check if same weekday
+  // Check if same weekday (using local day since that's what user selected)
   if (availability.dayOfWeek !== start.getDay()) {
     return false;
   }
 
-  // Use minutes since midnight for time comparison
+  // Session must be on the same day
   if (start.toDateString() !== end.toDateString()) {
     return false;
   }
 
-  const startMinutes = minutesSinceMidnight(start);
-  const endMinutes = minutesSinceMidnight(end);
-  const availStartMinutes = minutesSinceMidnight(availability.startTime);
-  const availEndMinutes = minutesSinceMidnight(availability.endTime);
+  // The requested session times are in local time (user's perspective)
+  const startMinutes = minutesSinceMidnightLocal(start);
+  const endMinutes = minutesSinceMidnightLocal(end);
+  
+  // Weekly availability times are stored as UTC (1970-01-01T11:00:00Z means 11:00)
+  // so we need to read UTC hours/minutes to get the intended time
+  const availStartMinutes = minutesSinceMidnightUTC(availability.startTime);
+  const availEndMinutes = minutesSinceMidnightUTC(availability.endTime);
 
   return availStartMinutes <= startMinutes && availEndMinutes >= endMinutes;
 }
