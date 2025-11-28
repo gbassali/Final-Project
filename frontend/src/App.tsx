@@ -1,3 +1,8 @@
+//time stamp on metric
+// edit goals.
+
+
+
 import { useState, useEffect } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { postJSON, getJSON, patchJSON, deleteJSON } from './api/client';
@@ -981,7 +986,7 @@ function App() {
   return (
     <div className="page">
       <header>
-        <h1>Health Club Console</h1>
+        <h1>Health Club Dashboard</h1>
         <p>
           Manage your personal data and trainer resources in one place.
         </p>
