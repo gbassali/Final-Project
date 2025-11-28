@@ -3,10 +3,10 @@ import { PrismaClient } from '../generated/prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Starting seed...');
+  console.log('Starting seed...');
 
   // Clear existing data (in reverse order of dependencies)
-  console.log('🧹 Cleaning existing data...');
+  console.log('Cleaning existing data...');
   await prisma.classRegistration.deleteMany();
   await prisma.fitnessClass.deleteMany();
   await prisma.session.deleteMany();
@@ -21,7 +21,7 @@ async function main() {
   // ============================================
   // 1. ADMIN STAFF
   // ============================================
-  console.log('👔 Creating admin staff...');
+  console.log('Creating admin staff...');
   const admin1 = await prisma.adminStaff.create({
     data: {
       name: 'Sarah Johnson',
@@ -36,7 +36,7 @@ async function main() {
   // ============================================
   // 2. ROOMS
   // ============================================
-  console.log('🏠 Creating rooms...');
+  console.log('Creating rooms...');
   const room1 = await prisma.room.create({
     data: {
       name: 'Main Studio',
@@ -77,7 +77,7 @@ async function main() {
   // ============================================
   // 3. TRAINERS
   // ============================================
-  console.log('💪 Creating trainers...');
+  console.log('Creating trainers...');
   const trainer1 = await prisma.trainer.create({
     data: {
       name: 'Alex Martinez',
@@ -102,7 +102,7 @@ async function main() {
   // ============================================
   // 4. MEMBERS
   // ============================================
-  console.log('👥 Creating members...');
+  console.log('Creating members...');
   const now = new Date();
   
   const member1 = await prisma.member.create({
@@ -188,7 +188,7 @@ async function main() {
   // ============================================
   // 5. HEALTH METRICS
   // ============================================
-  console.log('📊 Creating health metrics...');
+  console.log('Creating health metrics...');
   
   // Member 1 - Multiple weight entries over time
   await prisma.healthMetric.createMany({
@@ -313,7 +313,7 @@ async function main() {
   // ============================================
   // 6. FITNESS GOALS
   // ============================================
-  console.log('🎯 Creating fitness goals...');
+  console.log('Creating fitness goals...');
   
   // Member 1 - Active and completed goals
   await prisma.fitnessGoals.createMany({
@@ -384,7 +384,7 @@ async function main() {
   // ============================================
   // 7. TRAINER AVAILABILITIES
   // ============================================
-  console.log('📅 Creating trainer availabilities...');
+  console.log('Creating trainer availabilities...');
   
   // Helper function to create time-only DateTime
   const createTime = (hours: number, minutes: number): Date => {
@@ -501,7 +501,7 @@ async function main() {
   // ============================================
   // 8. PT SESSIONS
   // ============================================
-  console.log('🏋️ Creating PT sessions...');
+  console.log('Creating PT sessions...');
   
   // Past sessions
   const pastSession1 = await prisma.session.create({
@@ -596,7 +596,7 @@ async function main() {
   // ============================================
   // 9. FITNESS CLASSES
   // ============================================
-  console.log('🧘 Creating fitness classes...');
+  console.log('Creating fitness classes...');
   
   // Past classes
   const pastClass1 = await prisma.fitnessClass.create({
@@ -680,7 +680,7 @@ async function main() {
   // ============================================
   // 10. CLASS REGISTRATIONS
   // ============================================
-  console.log('📝 Creating class registrations...');
+  console.log('Creating class registrations...');
   
   // Past class registration (for history)
   await prisma.classRegistration.createMany({
@@ -768,8 +768,8 @@ async function main() {
     ],
   });
 
-  console.log('✅ Seed completed successfully!');
-  console.log('\n📊 Summary:');
+  console.log('Seed completed successfully!');
+  console.log('\nSummary:');
   console.log(`   - Admin Staff: 2`);
   console.log(`   - Rooms: 6`);
   console.log(`   - Trainers: 4`);
@@ -784,7 +784,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error('❌ Error during seed:', e);
+    console.error('Error during seed:', e);
     globalThis.process.exit(1);
   })
   .finally(async () => {
