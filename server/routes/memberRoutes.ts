@@ -17,6 +17,8 @@ import {
 import { CreateFitnessGoalsInput } from '../../models/fitnessGoalModel';
 import { CreateHealthMetricInput } from '../../models/healthMetricModel';
 import { requireAuth } from './authRoutes';
+import { listSessionsForMemberWithDetails } from '../../models/sessionModel';
+import { bookPtSession } from '../../app/ptSessionSchedulingService';
 
 const router = Router();
 
@@ -127,6 +129,33 @@ router.patch('/:memberId/metrics/:metricId', async (req, res, next) => {
     const data = buildHealthMetricUpdateInput(req.body);
     const metric = await updateHealthMetricForMember(memberId, metricId, data);
     res.json(metric);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:memberId/sessions', async (req, res, next) => {
+  try {
+    const memberId = parseId(req.params.memberId, 'memberId');
+    const sessions = await listSessionsForMemberWithDetails(memberId);
+    res.json(sessions);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:memberId/sessions', async (req, res, next) => {
+  try {
+    const memberId = parseId(req.params.memberId, 'memberId');
+    const data = buildPtSessionCreateInput(req.body);
+    const session = await bookPtSession({
+      memberId,
+      trainerId: data.trainerId,
+      roomId: data.roomId,
+      startTime: data.startTime,
+      endTime: data.endTime,
+    });
+    res.status(201).json(session);
   } catch (error) {
     next(error);
   }
@@ -276,5 +305,38 @@ function buildHealthMetricUpdateInput(
   }
 
   return data;
+}
+
+function buildPtSessionCreateInput(body: any) {
+  const trainerId = parseNumericId(body?.trainerId, 'trainerId');
+  const roomId = parseNumericId(body?.roomId, 'roomId');
+  if (!body?.startTime || !body?.endTime) {
+    const error = new Error('startTime and endTime are required');
+    (error as any).status = 400;
+    throw error;
+  }
+  const startTime = parseDateString(body.startTime, 'startTime');
+  const endTime = parseDateString(body.endTime, 'endTime');
+  if (startTime >= endTime) {
+    const error = new Error('startTime must be before endTime');
+    (error as any).status = 400;
+    throw error;
+  }
+  return { trainerId, roomId, startTime, endTime };
+}
+
+function parseNumericId(value: unknown, field: string): number {
+  const parsed =
+    typeof value === 'string' && value.trim() !== ''
+      ? Number(value)
+      : typeof value === 'number'
+      ? value
+      : NaN;
+  if (!Number.isFinite(parsed)) {
+    const error = new Error(`Invalid ${field}`);
+    (error as any).status = 400;
+    throw error;
+  }
+  return parsed;
 }
 

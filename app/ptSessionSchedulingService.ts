@@ -9,6 +9,8 @@ import { memberHasConflict } from "./memberService";
 import { roomHasConflict } from "./roomService";
 import { trainerHasConflict } from "./trainerService";
 
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
 export interface BookPtSessionInput {
   memberId: number;
   trainerId: number;
@@ -38,6 +40,9 @@ export async function bookPtSession(input: BookPtSessionInput): Promise<Session>
   }
   if (start >= end) {
     throw new Error("startTime must be before endTime.");
+  }
+  if (end.getTime() - start.getTime() !== ONE_HOUR_MS) {
+    throw new Error("PT sessions must be exactly 60 minutes long.");
   }
 
   const member = await getMemberById(input.memberId);
@@ -98,6 +103,9 @@ export async function reschedulePtSession(input: ReschedulePtSessionInput): Prom
   }
   if (start >= end) {
     throw new Error("newStartTime must be before newEndTime.");
+  }
+  if (end.getTime() - start.getTime() !== ONE_HOUR_MS) {
+    throw new Error("PT sessions must be exactly 60 minutes long.");
   }
 
   // Determine if new trainer or room is specified

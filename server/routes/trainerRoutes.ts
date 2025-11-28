@@ -9,7 +9,7 @@ import {
   createTrainerAvailability,
   deleteTrainerAvailability,
 } from '../../models/trainerAvailabilityModel';
-import { listSessionsForTrainer } from '../../models/sessionModel';
+import { listSessionsForTrainerWithDetails } from '../../models/sessionModel';
 import { listFitnessClassesForTrainer } from '../../models/fitnessClassModel';
 import type { Prisma, AvailabilityType } from '../../generated/prisma/client';
 
@@ -85,7 +85,7 @@ router.get('/:trainerId/schedule', async (req, res, next) => {
   try {
     const trainerId = parseId(req.params.trainerId, 'trainerId');
     const [sessions, classes] = await Promise.all([
-      listSessionsForTrainer(trainerId),
+      listSessionsForTrainerWithDetails(trainerId),
       listFitnessClassesForTrainer(trainerId),
     ]);
     res.json({ sessions, classes });

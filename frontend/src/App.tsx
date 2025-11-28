@@ -56,6 +56,8 @@ type TrainerSchedule = {
     startTime: string;
     endTime: string;
     roomId: number | null;
+    member?: { id: number; name: string } | null;
+    room?: { id: number; name: string } | null;
   }[];
   classes: {
     id: number;
@@ -65,6 +67,32 @@ type TrainerSchedule = {
     roomId: number;
     capacity: number;
   }[];
+};
+
+type RoomSummary = {
+  id: number;
+  name: string;
+  type: string | null;
+  capacity: number;
+};
+
+type MemberSessionDetail = {
+  id: number;
+  startTime: string;
+  endTime: string;
+  trainerId: number | null;
+  roomId: number | null;
+  trainer?: {
+    id: number;
+    name: string | null;
+    email: string | null;
+  } | null;
+  room?: {
+    id: number;
+    name: string;
+    type: string | null;
+    capacity: number;
+  } | null;
 };
 
 type SessionState = {
@@ -89,13 +117,32 @@ const emptyLoginForm: LoginPayload = {
 
 const SESSION_KEY = 'member-session';
 
-type SectionKey = 'profile' | 'goals' | 'metrics' | 'trainer';
+type SectionKey = 'profile' | 'goals' | 'metrics' | 'sessions' | 'trainer';
 
 const sections: { key: SectionKey; label: string }[] = [
   { key: 'profile', label: 'Profile' },
   { key: 'goals', label: 'Fitness Goals' },
   { key: 'metrics', label: 'Health Metrics' },
+  { key: 'sessions', label: 'PT Sessions' },
   { key: 'trainer', label: 'Trainer Tools' },
+];
+
+const PT_TIME_SLOTS = [
+  '06:00',
+  '07:00',
+  '08:00',
+  '09:00',
+  '10:00',
+  '11:00',
+  '12:00',
+  '13:00',
+  '14:00',
+  '15:00',
+  '16:00',
+  '17:00',
+  '18:00',
+  '19:00',
+  '20:00',
 ];
 
 type ScheduleEntry = {
@@ -165,6 +212,22 @@ function App() {
     endDateTime: '',
   });
   const [trainerLoading, setTrainerLoading] = useState(false);
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [memberSessions, setMemberSessions] = useState<MemberSessionDetail[]>(
+    []
+  );
+  const [sessionForm, setSessionForm] = useState({
+    trainerId: '',
+    roomId: '',
+    date: '',
+    timeSlot: '',
+  });
+  const [sessionMessage, setSessionMessage] = useState<string | null>(null);
+  const [sessionMessageTone, setSessionMessageTone] = useState<
+    'success' | 'error'
+  >('success');
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionSaving, setSessionSaving] = useState(false);
 
   useEffect(() => {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -197,6 +260,8 @@ function App() {
     if (session?.token) {
       loadDashboard();
       loadTrainers();
+      loadRooms();
+      loadMemberSessions();
     } else {
       setProfile(null);
       setGoals([]);
@@ -204,6 +269,15 @@ function App() {
       setTrainers([]);
       setAvailabilities([]);
       setSchedule(null);
+      setRooms([]);
+      setMemberSessions([]);
+      setSessionForm({
+        trainerId: '',
+        roomId: '',
+        date: '',
+        timeSlot: '',
+      });
+      setSessionMessage(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
@@ -284,6 +358,34 @@ function App() {
       );
     } finally {
       setTrainerLoading(false);
+    }
+  };
+
+  const loadRooms = async () => {
+    if (!session?.token) return;
+    try {
+      const data = await getJSON<RoomSummary[]>('/api/rooms', {
+        token: session.token,
+      });
+      setRooms(data);
+    } catch (err) {
+      console.error('Failed to load rooms', err);
+    }
+  };
+
+  const loadMemberSessions = async () => {
+    if (!session?.token) return;
+    setSessionsLoading(true);
+    try {
+      const data = await getJSON<MemberSessionDetail[]>(
+        `/api/members/${session.member.id}/sessions`,
+        { token: session.token }
+      );
+      setMemberSessions(data);
+    } catch (err) {
+      console.error('Failed to load PT sessions', err);
+    } finally {
+      setSessionsLoading(false);
     }
   };
 
@@ -426,7 +528,90 @@ function App() {
     }
   };
 
+  const handleSessionFieldChange = (
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = event.target;
+    setSessionForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleSessionSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!session?.token) return;
+    if (
+      !sessionForm.trainerId ||
+      !sessionForm.roomId ||
+      !sessionForm.date ||
+      !sessionForm.timeSlot
+    ) {
+      setSessionMessage('Trainer, room, date, and time slot are required');
+      setSessionMessageTone('error');
+      return;
+    }
+
+    const start = new Date(`${sessionForm.date}T${sessionForm.timeSlot}`);
+    if (Number.isNaN(start.getTime())) {
+      setSessionMessage('Please choose a valid date and time slot');
+      setSessionMessageTone('error');
+      return;
+    }
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+
+    setSessionSaving(true);
+    setSessionMessage(null);
+    try {
+      const payload = {
+        trainerId: Number(sessionForm.trainerId),
+        roomId: Number(sessionForm.roomId),
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+      };
+      await postJSON(
+        `/api/members/${session.member.id}/sessions`,
+        payload,
+        { token: session.token }
+      );
+      setSessionForm({
+        trainerId: '',
+        roomId: '',
+        date: '',
+        timeSlot: '',
+      });
+      setSessionMessage('Session booked successfully');
+      setSessionMessageTone('success');
+      await loadMemberSessions();
+    } catch (err) {
+      setSessionMessage(
+        err instanceof Error ? err.message : 'Failed to book session'
+      );
+      setSessionMessageTone('error');
+    } finally {
+      setSessionSaving(false);
+    }
+  };
+
   const isAuthenticated = Boolean(session?.token);
+  const now = Date.now();
+  const upcomingPtSessions = memberSessions.filter(
+    (session) => new Date(session.endTime).getTime() >= now
+  );
+  const sessionSlotPreview = (() => {
+    if (!sessionForm.date || !sessionForm.timeSlot) {
+      return null;
+    }
+    const startPreview = new Date(`${sessionForm.date}T${sessionForm.timeSlot}`);
+    if (Number.isNaN(startPreview.getTime())) {
+      return null;
+    }
+    const endPreview = new Date(startPreview.getTime() + 60 * 60 * 1000);
+    return {
+      start: startPreview.toISOString(),
+      end: endPreview.toISOString(),
+    };
+  })();
 
   return (
     <div className="page">
@@ -817,6 +1002,125 @@ function App() {
               </section>
             )}
 
+            {activeSection === 'sessions' && (
+              <section className="card">
+                <div className="card-header">
+                  <h2>PT Sessions</h2>
+                  <button
+                    type="button"
+                    onClick={loadMemberSessions}
+                    disabled={sessionsLoading}
+                  >
+                    {sessionsLoading ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                </div>
+                {sessionMessage && (
+                  <p className={`status ${sessionMessageTone}`}>
+                    {sessionMessage}
+                  </p>
+                )}
+                <h3>Upcoming Sessions</h3>
+                {sessionsLoading && memberSessions.length === 0 ? (
+                  <p>Loading sessions…</p>
+                ) : upcomingPtSessions.length ? (
+                  <ul className="list">
+                    {upcomingPtSessions.map((session) => (
+                      <li key={session.id}>
+                        <strong>
+                          {session.trainer?.name ??
+                            (session.trainerId
+                              ? `Trainer #${session.trainerId}`
+                              : 'Trainer TBD')}
+                        </strong>{' '}
+                        ·{' '}
+                        {session.room?.name
+                          ? `Room ${session.room.name}`
+                          : session.roomId
+                          ? `Room #${session.roomId}`
+                          : 'Room TBD'}{' '}
+                        · {formatDate(session.startTime)}{' '}
+                        {formatTime(session.startTime)} -{' '}
+                        {formatTime(session.endTime)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>No upcoming PT sessions.</p>
+                )}
+                <form className="stack" onSubmit={handleSessionSubmit}>
+                  <h3>Book a Session</h3>
+                  <label>
+                    Trainer
+                    <select
+                      name="trainerId"
+                      value={sessionForm.trainerId}
+                      onChange={handleSessionFieldChange}
+                      required
+                    >
+                      <option value="">Select trainer</option>
+                      {trainers.map((trainer) => (
+                        <option key={trainer.id} value={trainer.id}>
+                          {trainer.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Room
+                    <select
+                      name="roomId"
+                      value={sessionForm.roomId}
+                      onChange={handleSessionFieldChange}
+                      required
+                    >
+                      <option value="">Select room</option>
+                      {rooms.map((room) => (
+                        <option key={room.id} value={room.id}>
+                          {room.name} (Cap {room.capacity})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Date
+                    <input
+                      type="date"
+                      name="date"
+                      value={sessionForm.date}
+                      onChange={handleSessionFieldChange}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Time Slot (1 hour)
+                    <select
+                      name="timeSlot"
+                      value={sessionForm.timeSlot}
+                      onChange={handleSessionFieldChange}
+                      required
+                    >
+                      <option value="">Select time</option>
+                      {PT_TIME_SLOTS.map((slot) => (
+                        <option key={slot} value={slot}>
+                          {formatSlotRange(slot)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {sessionSlotPreview && (
+                    <p className="hint">
+                      Session will run from {formatDate(sessionSlotPreview.start)}{' '}
+                      {formatTime(sessionSlotPreview.start)} to{' '}
+                      {formatTime(sessionSlotPreview.end)}
+                    </p>
+                  )}
+                  <button type="submit" disabled={sessionSaving}>
+                    {sessionSaving ? 'Booking…' : 'Book Session'}
+                  </button>
+                </form>
+              </section>
+            )}
+
             {activeSection === 'trainer' && (
               <section className="card">
                 <h2>Trainer Tools</h2>
@@ -1008,12 +1312,22 @@ function formatTime(value: string | null): string {
   });
 }
 
+function formatSlotRange(value: string): string {
+  const date = new Date(`1970-01-01T${value}`);
+  if (Number.isNaN(date.getTime())) return value;
+  const end = new Date(date.getTime() + 60 * 60 * 1000);
+  return `${date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+}
+
 function buildScheduleEntries(schedule: TrainerSchedule): ScheduleEntry[] {
   const sessionEntries: ScheduleEntry[] = schedule.sessions.map((session) => ({
     id: `session-${session.id}`,
     kind: 'SESSION',
-    title: `Member #${session.memberId}`,
-    subTitle: session.roomId ? `Room ${session.roomId}` : 'Room TBD',
+    title: session.member?.name ?? `Member #${session.memberId}`,
+    subTitle: session.room?.name ?? (session.roomId ? `Room #${session.roomId}` : 'Room TBD'),
     startTime: session.startTime,
     endTime: session.endTime,
   }));
