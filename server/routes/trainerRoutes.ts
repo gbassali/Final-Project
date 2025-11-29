@@ -9,13 +9,29 @@ import {
   createTrainerAvailability,
   deleteTrainerAvailability,
 } from '../../models/trainerAvailabilityModel';
-import { listSessionsForTrainer } from '../../models/sessionModel';
+import { listSessionsForTrainerWithDetails } from '../../models/sessionModel';
 import { listFitnessClassesForTrainer } from '../../models/fitnessClassModel';
+import { getAvailableSlotsForDate } from '../../app/availableSlotsService';
 import type { Prisma, AvailabilityType } from '../../generated/prisma/client';
 
 const router = Router();
 
 router.use(requireAuth);
+
+// Get available slots for a specific date (across all trainers)
+router.get('/available-slots', async (req, res, next) => {
+  try {
+    const date = req.query.date as string;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: 'date query param required (YYYY-MM-DD)' });
+      return;
+    }
+    const result = await getAvailableSlotsForDate(date);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/', async (_req, res, next) => {
   try {
@@ -85,7 +101,7 @@ router.get('/:trainerId/schedule', async (req, res, next) => {
   try {
     const trainerId = parseId(req.params.trainerId, 'trainerId');
     const [sessions, classes] = await Promise.all([
-      listSessionsForTrainer(trainerId),
+      listSessionsForTrainerWithDetails(trainerId),
       listFitnessClassesForTrainer(trainerId),
     ]);
     res.json({ sessions, classes });

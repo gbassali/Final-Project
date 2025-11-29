@@ -25,11 +25,15 @@ async function main() {
   const admin1 = await prisma.adminStaff.create({
     data: {
       name: 'Sarah Johnson',
+      email: 'admin@gym.com',
+      password: 'admin123',
     },
   });
   const admin2 = await prisma.adminStaff.create({
     data: {
       name: 'Michael Chen',
+      email: 'michael@gym.com',
+      password: 'admin123',
     },
   });
 
@@ -499,274 +503,19 @@ async function main() {
   });
 
   // ============================================
-  // 8. PT SESSIONS
+  // 8. PT SESSIONS - None seeded (trainers start fresh)
   // ============================================
-  console.log('Creating PT sessions...');
-  
-  // Past sessions
-  const pastSession1 = await prisma.session.create({
-    data: {
-      memberId: member1.id,
-      trainerId: trainer1.id,
-      roomId: room4.id,
-      startTime: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000), // 2 weeks ago
-      endTime: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000), // 1 hour later
-    },
-  });
-  
-  const pastSession2 = await prisma.session.create({
-    data: {
-      memberId: member2.id,
-      trainerId: trainer2.id,
-      roomId: room5.id,
-      startTime: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), // 1 week ago
-      endTime: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-    },
-  });
-  
-  // Upcoming sessions (with rooms)
-  const upcomingSession1 = await prisma.session.create({
-    data: {
-      memberId: member1.id,
-      trainerId: trainer1.id,
-      roomId: room4.id,
-      startTime: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000), // 2 days from now
-      endTime: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-    },
-  });
-  
-  const upcomingSession2 = await prisma.session.create({
-    data: {
-      memberId: member3.id,
-      trainerId: trainer2.id,
-      roomId: room5.id,
-      startTime: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000), // 5 days from now
-      endTime: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-    },
-  });
-  
-  // Sessions without rooms (room booking pending)
-  const upcomingSession3 = await prisma.session.create({
-    data: {
-      memberId: member4.id,
-      trainerId: trainer3.id,
-      roomId: null, // No room assigned yet
-      startTime: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-      endTime: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-    },
-  });
-  
-  const upcomingSession4 = await prisma.session.create({
-    data: {
-      memberId: member5.id,
-      trainerId: trainer1.id,
-      roomId: null, // No room assigned yet
-      startTime: new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000), // 4 days from now
-      endTime: new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-    },
-  });
-  
-  // More past sessions for history
-  await prisma.session.createMany({
-    data: [
-      {
-        memberId: member1.id,
-        trainerId: trainer1.id,
-        roomId: room4.id,
-        startTime: new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000), // 4 weeks ago
-        endTime: new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-      },
-      {
-        memberId: member4.id,
-        trainerId: trainer3.id,
-        roomId: room4.id,
-        startTime: new Date(now.getTime() - 21 * 24 * 60 * 60 * 1000), // 3 weeks ago
-        endTime: new Date(now.getTime() - 21 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-      },
-      {
-        memberId: member6.id,
-        trainerId: trainer2.id,
-        roomId: room5.id,
-        startTime: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000), // 10 days ago
-        endTime: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-      },
-    ],
-  });
+  console.log('Skipping PT sessions (trainers start fresh)...');
 
   // ============================================
-  // 9. FITNESS CLASSES
+  // 9. FITNESS CLASSES - None seeded (trainers start fresh)
   // ============================================
-  console.log('Creating fitness classes...');
-  
-  // Past classes
-  const pastClass1 = await prisma.fitnessClass.create({
-    data: {
-      name: 'Morning Yoga',
-      trainerId: trainer2.id,
-      roomId: room2.id,
-      startTime: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), // 1 week ago
-      endTime: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-      capacity: 20,
-    },
-  });
-  
-  // Upcoming classes - various scenarios
-  const upcomingClass1 = await prisma.fitnessClass.create({
-    data: {
-      name: 'HIIT Bootcamp',
-      trainerId: trainer1.id,
-      roomId: room1.id,
-      startTime: new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000), // Tomorrow
-      endTime: new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-      capacity: 30,
-    },
-  });
-  
-  const upcomingClass2 = await prisma.fitnessClass.create({
-    data: {
-      name: 'Yoga Flow',
-      trainerId: trainer2.id,
-      roomId: room2.id,
-      startTime: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000), // 2 days from now
-      endTime: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-      capacity: 20,
-    },
-  });
-  
-  const upcomingClass3 = await prisma.fitnessClass.create({
-    data: {
-      name: 'Spin Class',
-      trainerId: trainer3.id,
-      roomId: room6.id,
-      startTime: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000), // 3 days from now
-      endTime: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000 + 45 * 60 * 1000), // 45 minutes
-      capacity: 15,
-    },
-  });
-  
-  const upcomingClass4 = await prisma.fitnessClass.create({
-    data: {
-      name: 'Cardio Blast',
-      trainerId: trainer1.id,
-      roomId: room3.id,
-      startTime: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000), // 5 days from now
-      endTime: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-      capacity: 25,
-    },
-  });
-  
-  const upcomingClass5 = await prisma.fitnessClass.create({
-    data: {
-      name: 'Pilates',
-      trainerId: trainer4.id,
-      roomId: room2.id,
-      startTime: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-      endTime: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-      capacity: 20,
-    },
-  });
-  
-  const upcomingClass6 = await prisma.fitnessClass.create({
-    data: {
-      name: 'Strength Training',
-      trainerId: trainer2.id,
-      roomId: room1.id,
-      startTime: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000), // 10 days from now
-      endTime: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
-      capacity: 30,
-    },
-  });
+  console.log('Skipping fitness classes (trainers start fresh)...');
 
   // ============================================
-  // 10. CLASS REGISTRATIONS
+  // 10. CLASS REGISTRATIONS - None seeded
   // ============================================
-  console.log('Creating class registrations...');
-  
-  // Past class registration (for history)
-  await prisma.classRegistration.createMany({
-    data: [
-      {
-        memberId: member1.id,
-        fitnessClassId: pastClass1.id,
-        registeredAt: new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
-      },
-      {
-        memberId: member2.id,
-        fitnessClassId: pastClass1.id,
-        registeredAt: new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
-      },
-      {
-        memberId: member4.id,
-        fitnessClassId: pastClass1.id,
-        registeredAt: new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
-      },
-    ],
-  });
-  
-  // Upcoming Class 1 (HIIT Bootcamp) - Partially filled (8/30)
-  await prisma.classRegistration.createMany({
-    data: [
-      { memberId: member1.id, fitnessClassId: upcomingClass1.id },
-      { memberId: member2.id, fitnessClassId: upcomingClass1.id },
-      { memberId: member3.id, fitnessClassId: upcomingClass1.id },
-      { memberId: member4.id, fitnessClassId: upcomingClass1.id },
-      { memberId: member5.id, fitnessClassId: upcomingClass1.id },
-      { memberId: member6.id, fitnessClassId: upcomingClass1.id },
-      { memberId: member7.id, fitnessClassId: upcomingClass1.id },
-      { memberId: member8.id, fitnessClassId: upcomingClass1.id },
-    ],
-  });
-  
-  // Upcoming Class 2 (Yoga Flow) - Partially filled (8/20)
-  await prisma.classRegistration.createMany({
-    data: [
-      { memberId: member1.id, fitnessClassId: upcomingClass2.id },
-      { memberId: member2.id, fitnessClassId: upcomingClass2.id },
-      { memberId: member3.id, fitnessClassId: upcomingClass2.id },
-      { memberId: member4.id, fitnessClassId: upcomingClass2.id },
-      { memberId: member5.id, fitnessClassId: upcomingClass2.id },
-      { memberId: member6.id, fitnessClassId: upcomingClass2.id },
-      { memberId: member7.id, fitnessClassId: upcomingClass2.id },
-      { memberId: member8.id, fitnessClassId: upcomingClass2.id },
-    ],
-  });
-  
-  // Upcoming Class 3 (Spin Class) - Partially filled (8/15) - Note: We only have 8 members, so this shows 8/15
-  // In a real scenario, you'd have more members to fill it completely
-  await prisma.classRegistration.createMany({
-    data: [
-      { memberId: member1.id, fitnessClassId: upcomingClass3.id },
-      { memberId: member2.id, fitnessClassId: upcomingClass3.id },
-      { memberId: member3.id, fitnessClassId: upcomingClass3.id },
-      { memberId: member4.id, fitnessClassId: upcomingClass3.id },
-      { memberId: member5.id, fitnessClassId: upcomingClass3.id },
-      { memberId: member6.id, fitnessClassId: upcomingClass3.id },
-      { memberId: member7.id, fitnessClassId: upcomingClass3.id },
-      { memberId: member8.id, fitnessClassId: upcomingClass3.id },
-    ],
-  });
-  
-  // Upcoming Class 4 (Cardio Blast) - Empty (0/25)
-  // No registrations - testing empty class scenario
-  
-  // Upcoming Class 5 (Pilates) - Few registrations (3/20)
-  await prisma.classRegistration.createMany({
-    data: [
-      { memberId: member2.id, fitnessClassId: upcomingClass5.id },
-      { memberId: member4.id, fitnessClassId: upcomingClass5.id },
-      { memberId: member6.id, fitnessClassId: upcomingClass5.id },
-    ],
-  });
-  
-  // Upcoming Class 6 (Strength Training) - Partially filled (4/30)
-  await prisma.classRegistration.createMany({
-    data: [
-      { memberId: member1.id, fitnessClassId: upcomingClass6.id },
-      { memberId: member3.id, fitnessClassId: upcomingClass6.id },
-      { memberId: member5.id, fitnessClassId: upcomingClass6.id },
-      { memberId: member7.id, fitnessClassId: upcomingClass6.id },
-    ],
-  });
+  console.log('Skipping class registrations (no classes seeded)...');
 
   console.log('Seed completed successfully!');
   console.log('\nSummary:');
@@ -777,9 +526,9 @@ async function main() {
   console.log(`   - Health Metrics: Multiple entries across members`);
   console.log(`   - Fitness Goals: Active and inactive goals`);
   console.log(`   - Trainer Availabilities: Weekly and one-time patterns`);
-  console.log(`   - PT Sessions: Past and upcoming (some with rooms, some without)`);
-  console.log(`   - Fitness Classes: Past and upcoming with various capacity scenarios`);
-  console.log(`   - Class Registrations: Full, partially filled, and empty classes`);
+  console.log(`   - PT Sessions: None (trainers start fresh)`);
+  console.log(`   - Fitness Classes: None (trainers start fresh)`);
+  console.log(`   - Class Registrations: None`);
 }
 
 main()

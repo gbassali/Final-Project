@@ -17,7 +17,7 @@ export async function getAdminStaffById(id: number): Promise<AdminStaff | null> 
 export async function getAdminStaffByEmail(
   email: string
 ): Promise<AdminStaff | null> {
-  return prisma.adminStaff.findUnique({ where: { email } });
+  return prisma.adminStaff.findFirst({ where: { email } });
 }
 
 export async function listAdminStaff(): Promise<AdminStaff[]> {

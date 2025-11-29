@@ -1,5 +1,5 @@
 import { Session, AvailabilityType } from "../generated/prisma/client";
-import { createSession, getSessionById, updateSession } from "../models/sessionModel";
+import { createSession, getSessionById, updateSession, deleteSession } from "../models/sessionModel";
 import { listTrainerAvailabilitiesForTrainer } from "../models/trainerAvailabilityModel";
 import { getMemberById } from "../models/memberModel";
 import { getTrainerById } from "../models/trainerModel";
@@ -8,6 +8,8 @@ import { convertToDate, isTimeWithinOneTimeAvailability, isTimeWithinWeeklyAvail
 import { memberHasConflict } from "./memberService";
 import { roomHasConflict } from "./roomService";
 import { trainerHasConflict } from "./trainerService";
+
+const ONE_HOUR_MS = 60 * 60 * 1000;
 
 export interface BookPtSessionInput {
   memberId: number;
@@ -38,6 +40,9 @@ export async function bookPtSession(input: BookPtSessionInput): Promise<Session>
   }
   if (start >= end) {
     throw new Error("startTime must be before endTime.");
+  }
+  if (end.getTime() - start.getTime() !== ONE_HOUR_MS) {
+    throw new Error("PT sessions must be exactly 60 minutes long.");
   }
 
   const member = await getMemberById(input.memberId);
@@ -98,6 +103,9 @@ export async function reschedulePtSession(input: ReschedulePtSessionInput): Prom
   }
   if (start >= end) {
     throw new Error("newStartTime must be before newEndTime.");
+  }
+  if (end.getTime() - start.getTime() !== ONE_HOUR_MS) {
+    throw new Error("PT sessions must be exactly 60 minutes long.");
   }
 
   // Determine if new trainer or room is specified
@@ -166,6 +174,25 @@ async function ensureTrainerAvailableForSlot(trainerId: number, start: Date, end
       "Trainer is not available during the requested time."
     );
   }
+}
+
+export async function cancelPtSession(sessionId: number, memberId: number): Promise<Session> {
+  const existing = await getSessionById(sessionId);
+  if (!existing) {
+    throw new Error(`Session with id ${sessionId} not found.`);
+  }
+
+  // Ensure the member owns this session
+  if (existing.memberId !== memberId) {
+    throw new Error("You can only cancel your own sessions.");
+  }
+
+  // Check if session is in the past
+  if (new Date(existing.startTime) < new Date()) {
+    throw new Error("Cannot cancel a session that has already started or passed.");
+  }
+
+  return deleteSession(sessionId);
 }
 
 //move helpers into generic servicess!!

@@ -23,11 +23,56 @@ export async function listSessionsForMember(
   });
 }
 
+export async function listSessionsForMemberWithDetails(
+  memberId: number
+) {
+  return prisma.session.findMany({
+    where: { memberId },
+    include: {
+      trainer: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      room: {
+        select: {
+          id: true,
+          name: true,
+          capacity: true,
+        },
+      },
+    },
+    orderBy: { startTime: "asc" },
+  });
+}
+
 export async function listSessionsForTrainer(
   trainerId: number
 ): Promise<Session[]> {
   return prisma.session.findMany({
     where: { trainerId },
+    orderBy: { startTime: "asc" },
+  });
+}
+
+export async function listSessionsForTrainerWithDetails(trainerId: number) {
+  return prisma.session.findMany({
+    where: { trainerId },
+    include: {
+      member: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      room: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
     orderBy: { startTime: "asc" },
   });
 }
