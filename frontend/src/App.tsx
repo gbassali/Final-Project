@@ -233,6 +233,11 @@ function App() {
   });
   const [goalSaving, setGoalSaving] = useState(false);
   const [goalMessage, setGoalMessage] = useState<string | null>(null);
+  const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
+  const [editGoalForm, setEditGoalForm] = useState({
+    value: '',
+    active: true,
+  });
 
   const [metrics, setMetrics] = useState<HealthMetric[]>([]);
   const [metricForm, setMetricForm] = useState({
@@ -1367,12 +1372,129 @@ function App() {
                 {goals.length ? (
                   <ul className="list">
                     {goals.map((goal) => (
-                      <li key={goal.id}>
-                        <strong>{goal.value}</strong> ·{' '}
-                        {goal.active ? 'Active' : 'Inactive'} ·{' '}
-                        {goal.recordedAt
-                          ? new Date(goal.recordedAt).toLocaleDateString()
-                          : 'No date'}
+                      <li key={goal.id} className="goal-item">
+                        {editingGoalId === goal.id ? (
+                          <form
+                            className="edit-goal-form"
+                            onSubmit={async (e) => {
+                              e.preventDefault();
+                              if (!session?.token) return;
+                              setGoalSaving(true);
+                              setGoalMessage(null);
+                              try {
+                                const updated = await patchJSON<FitnessGoal>(
+                                  `/api/members/${session.member.id}/goals/${goal.id}`,
+                                  {
+                                    value: editGoalForm.value,
+                                    active: editGoalForm.active,
+                                  },
+                                  { token: session.token }
+                                );
+                                setGoals((prev) =>
+                                  prev.map((g) => (g.id === goal.id ? updated : g))
+                                );
+                                setEditingGoalId(null);
+                                setGoalMessage('Goal updated successfully');
+                              } catch (err) {
+                                setGoalMessage(
+                                  err instanceof Error ? err.message : 'Failed to update goal'
+                                );
+                              } finally {
+                                setGoalSaving(false);
+                              }
+                            }}
+                          >
+                            <input
+                              type="text"
+                              value={editGoalForm.value}
+                              onChange={(e) =>
+                                setEditGoalForm((prev) => ({ ...prev, value: e.target.value }))
+                              }
+                              required
+                            />
+                            <label className="checkbox">
+                              <input
+                                type="checkbox"
+                                checked={editGoalForm.active}
+                                onChange={(e) =>
+                                  setEditGoalForm((prev) => ({ ...prev, active: e.target.checked }))
+                                }
+                              />
+                              Active
+                            </label>
+                            <div className="edit-goal-actions">
+                              <button type="submit" disabled={goalSaving}>
+                                {goalSaving ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                className="button-secondary"
+                                onClick={() => setEditingGoalId(null)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            <div className="goal-content">
+                              <strong>{goal.value}</strong>
+                              <span className={`goal-status ${goal.active ? 'active' : 'inactive'}`}>
+                                {goal.active ? 'Active' : 'Inactive'}
+                              </span>
+                              <span className="goal-date">
+                                {goal.recordedAt
+                                  ? new Date(goal.recordedAt).toLocaleDateString()
+                                  : 'No date'}
+                              </span>
+                            </div>
+                            <div className="goal-actions">
+                              <button
+                                type="button"
+                                className="button-small"
+                                onClick={() => {
+                                  setEditingGoalId(goal.id);
+                                  setEditGoalForm({
+                                    value: goal.value,
+                                    active: goal.active,
+                                  });
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className={`button-small ${goal.active ? 'button-warning' : 'button-success'}`}
+                                onClick={async () => {
+                                  if (!session?.token) return;
+                                  setGoalSaving(true);
+                                  try {
+                                    const updated = await patchJSON<FitnessGoal>(
+                                      `/api/members/${session.member.id}/goals/${goal.id}`,
+                                      { active: !goal.active },
+                                      { token: session.token }
+                                    );
+                                    setGoals((prev) =>
+                                      prev.map((g) => (g.id === goal.id ? updated : g))
+                                    );
+                                    setGoalMessage(
+                                      `Goal ${updated.active ? 'activated' : 'deactivated'}`
+                                    );
+                                  } catch (err) {
+                                    setGoalMessage(
+                                      err instanceof Error ? err.message : 'Failed to update goal'
+                                    );
+                                  } finally {
+                                    setGoalSaving(false);
+                                  }
+                                }}
+                                disabled={goalSaving}
+                              >
+                                {goal.active ? 'Deactivate' : 'Activate'}
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </li>
                     ))}
                   </ul>
