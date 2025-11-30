@@ -31,9 +31,7 @@ export async function getFitnessGoalById(id: number): Promise<FitnessGoals | nul
   return prisma.fitnessGoals.findUnique({ where: { id } });
 }
 
-export async function getFitnessGoalsForMember(
-  memberId: number
-): Promise<FitnessGoals[]> {
+export async function getFitnessGoalsForMember(memberId: number): Promise<FitnessGoals[]> {
   return prisma.fitnessGoals.findMany({
     where: { memberId },
     orderBy: { recordedAt: "desc" },

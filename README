@@ -1,0 +1,24 @@
+Team Members:
+- Gurleen Bassali (101260100)
+- Karan Modi (101193808)
+
+Project Structure:
+Our project structure is different from what is specified in the final project specification because we are using Prisma.
+
+This is the breakdown of our project structure:
+- The app/ directory contains all service-level logic for the application.
+- The models/ directory contains simple, CRUD-focused models that interact directly with the Prisma Client. Handle interaction with specific entities (Member, Trainer, FitnessClass, Session, etc.).
+- The frontend/ directory contains all UI components used. Showed in demo.
+- The server/ directory contains all API logic to handle flow of information.
+- The prisma/ directory contains all Prisma-related files. Including:
+    - schema.prisma — Source of truth for models, relations, constraints, and indexes. Represents entire relational schema.
+    - migrations/ — Auto-generated SQL migration files
+    - seed.ts — Script to populate initial database data
+- The generated/ directory contains the Prisma Client used throughout the application for all database operations.
+- The docs/ directory contains:
+    - Our ER model.
+    - Project report (ER Model explanation, ER --> Schema Mapping, Normalization, ORM usage explanation, etc.)
+
+Demo Video Youtube Link: https://www.youtube.com/watch?v=EfzbE1B0yzE
+
+This is the link to our github repository: https://github.com/gbassali/Final-Project
