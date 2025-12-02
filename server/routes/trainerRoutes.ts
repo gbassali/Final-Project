@@ -6,12 +6,13 @@ import {
 } from '../../models/trainerModel';
 import {
   listTrainerAvailabilitiesForTrainer,
-  createTrainerAvailability,
   deleteTrainerAvailability,
 } from '../../models/trainerAvailabilityModel';
 import { listSessionsForTrainerWithDetails } from '../../models/sessionModel';
 import { listFitnessClassesForTrainer } from '../../models/fitnessClassModel';
 import { getAvailableSlotsForDate } from '../../app/availableSlotsService';
+import { addOneTimeAvailabilityForTrainer, addWeeklyAvailabilityForTrainer } from '../../app/trainerAvailabilityService';
+import { getUpcomingSessionsForTrainer, getUpcomingClassesForTrainer } from '../../app/trainerScheduleService';
 import type { Prisma, AvailabilityType } from '../../generated/prisma/client';
 
 const router = Router();
@@ -70,11 +71,22 @@ router.post('/:trainerId/availabilities', async (req, res, next) => {
   try {
     const trainerId = parseId(req.params.trainerId, 'trainerId');
     const data = buildAvailabilityInput(req.body);
-    await assertNoAvailabilityConflict(trainerId, data);
-    const availability = await createTrainerAvailability({
-      ...data,
-      trainer: { connect: { id: trainerId } },
-    });
+    
+    let availability;
+    if (data.type === 'ONE_TIME') {
+      if (!data.startDateTime || !data.endDateTime) {
+        res.status(400).json({ error: 'startDateTime and endDateTime are required for ONE_TIME availability' });
+        return;
+      }
+      availability = await addOneTimeAvailabilityForTrainer(trainerId, data.startDateTime, data.endDateTime);
+    } else {
+      if (data.dayOfWeek === undefined || !data.startTime || !data.endTime) {
+        res.status(400).json({ error: 'dayOfWeek, startTime, and endTime are required for WEEKLY availability' });
+        return;
+      }
+      availability = await addWeeklyAvailabilityForTrainer(trainerId, data.dayOfWeek, data.startTime, data.endTime);
+    }
+    
     res.status(201).json(availability);
   } catch (error) {
     next(error);
@@ -101,8 +113,8 @@ router.get('/:trainerId/schedule', async (req, res, next) => {
   try {
     const trainerId = parseId(req.params.trainerId, 'trainerId');
     const [sessions, classes] = await Promise.all([
-      listSessionsForTrainerWithDetails(trainerId),
-      listFitnessClassesForTrainer(trainerId),
+      getUpcomingSessionsForTrainer(trainerId),
+      getUpcomingClassesForTrainer(trainerId),
     ]);
     res.json({ sessions, classes });
   } catch (error) {
@@ -124,11 +136,16 @@ function parseId(value: string, field: string): number {
 
 function buildAvailabilityInput(
   body: any
-): Prisma.TrainerAvailabilityCreateWithoutTrainerInput {
+): {
+  type: AvailabilityType;
+  startDateTime?: Date;
+  endDateTime?: Date;
+  dayOfWeek?: number;
+  startTime?: Date;
+  endTime?: Date;
+} {
   const type = parseAvailabilityType(body?.type);
-  const input: Prisma.TrainerAvailabilityCreateWithoutTrainerInput = {
-    type,
-  };
+  const input: any = { type };
 
   if (type === 'ONE_TIME') {
     if (!body?.startDateTime || !body?.endDateTime) {
@@ -198,92 +215,5 @@ function parseTime(value: string, field: string): Date {
     throw error;
   }
   return date;
-}
-
-async function assertNoAvailabilityConflict(
-  trainerId: number,
-  data: Prisma.TrainerAvailabilityCreateWithoutTrainerInput
-) {
-  const slots = await listTrainerAvailabilitiesForTrainer(trainerId);
-  if (data.type === 'ONE_TIME') {
-    const newStart = toMillis(data.startDateTime);
-    const newEnd = toMillis(data.endDateTime);
-    if (newStart == null || newEnd == null || newStart >= newEnd) {
-      const error = new Error('Invalid start/end times for ONE_TIME slot');
-      (error as any).status = 400;
-      throw error;
-    }
-    for (const slot of slots) {
-      if (slot.type !== 'ONE_TIME') continue;
-      const existingStart = toMillis(slot.startDateTime);
-      const existingEnd = toMillis(slot.endDateTime);
-      if (
-        existingStart != null &&
-        existingEnd != null &&
-        rangesOverlap(newStart, newEnd, existingStart, existingEnd)
-      ) {
-        const error = new Error('Availability overlaps an existing slot');
-        (error as any).status = 400;
-        throw error;
-      }
-    }
-  } else {
-    const newStartMinutes = toMinutes(data.startTime);
-    const newEndMinutes = toMinutes(data.endTime);
-    if (
-      data.dayOfWeek == null ||
-      newStartMinutes == null ||
-      newEndMinutes == null ||
-      newStartMinutes >= newEndMinutes
-    ) {
-      const error = new Error('Invalid weekly availability inputs');
-      (error as any).status = 400;
-      throw error;
-    }
-    for (const slot of slots) {
-      if (slot.type !== 'WEEKLY' || slot.dayOfWeek !== data.dayOfWeek) {
-        continue;
-      }
-      const existingStart = toMinutes(slot.startTime);
-      const existingEnd = toMinutes(slot.endTime);
-      if (
-        existingStart != null &&
-        existingEnd != null &&
-        rangesOverlap(
-          newStartMinutes,
-          newEndMinutes,
-          existingStart,
-          existingEnd
-        )
-      ) {
-        const error = new Error('Weekly availability overlaps existing slot');
-        (error as any).status = 400;
-        throw error;
-      }
-    }
-  }
-}
-
-function toMillis(value: Date | string | null | undefined): number | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  const ms = date.getTime();
-  return Number.isNaN(ms) ? null : ms;
-}
-
-function toMinutes(value: Date | string | null | undefined): number | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.getUTCHours() * 60 + date.getUTCMinutes();
-}
-
-function rangesOverlap(
-  startA: number,
-  endA: number,
-  startB: number,
-  endB: number
-): boolean {
-  return startA < endB && endA > startB;
 }
 

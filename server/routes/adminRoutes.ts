@@ -1,14 +1,13 @@
 import { Router } from 'express';
 import { requireAdminAuth } from './authRoutes';
 import {
-  createFitnessClass,
   getFitnessClassById,
-  updateFitnessClass,
   deleteFitnessClass,
 } from '../../models/fitnessClassModel';
 import { listTrainers, getTrainerById } from '../../models/trainerModel';
 import { listRooms, getRoomById } from '../../models/roomModel';
 import { listRegistrationsForClass } from '../../models/classRegistrationModel';
+import { createClassWithValidation, updateClassSchedule } from '../../app/classManagementService';
 import prisma from '../../models/prismaClient';
 
 const router = Router();
@@ -105,72 +104,10 @@ router.post('/classes', async (req, res, next) => {
   try {
     const data = buildClassInput(req.body);
     
-    // Validate trainer exists
-    const trainer = await getTrainerById(data.trainerId);
-    if (!trainer) {
-      res.status(400).json({ error: `Trainer ${data.trainerId} not found` });
-      return;
-    }
-    
-    // Validate room exists
-    const room = await getRoomById(data.roomId);
-    if (!room) {
-      res.status(400).json({ error: `Room ${data.roomId} not found` });
-      return;
-    }
-    
-    // Check for room conflicts
-    const roomConflict = await prisma.fitnessClass.findFirst({
-      where: {
-        roomId: data.roomId,
-        OR: [
-          {
-            startTime: { lt: data.endTime },
-            endTime: { gt: data.startTime },
-          },
-        ],
-      },
-    });
-    
-    if (roomConflict) {
-      res.status(400).json({ 
-        error: `Room "${room.name}" is already booked for "${roomConflict.name}" during this time` 
-      });
-      return;
-    }
-    
-    // Check for trainer conflicts (trainer teaching another class)
-    const trainerConflict = await prisma.fitnessClass.findFirst({
-      where: {
-        trainerId: data.trainerId,
-        OR: [
-          {
-            startTime: { lt: data.endTime },
-            endTime: { gt: data.startTime },
-          },
-        ],
-      },
-    });
-    
-    if (trainerConflict) {
-      res.status(400).json({ 
-        error: `Trainer "${trainer.name}" is already teaching "${trainerConflict.name}" during this time` 
-      });
-      return;
-    }
-    
-    // Check capacity doesn't exceed room capacity
-    if (data.capacity > room.capacity) {
-      res.status(400).json({ 
-        error: `Class capacity (${data.capacity}) exceeds room capacity (${room.capacity})` 
-      });
-      return;
-    }
-    
-    const fitnessClass = await createFitnessClass({
+    const fitnessClass = await createClassWithValidation({
       name: data.name,
-      trainer: { connect: { id: data.trainerId } },
-      room: { connect: { id: data.roomId } },
+      trainerId: data.trainerId,
+      roomId: data.roomId,
       startTime: data.startTime,
       endTime: data.endTime,
       capacity: data.capacity,
@@ -195,35 +132,25 @@ router.patch('/classes/:classId', async (req, res, next) => {
     
     const data = buildClassUpdateInput(req.body);
     
-    // If changing trainer, validate
-    if (data.trainerId !== undefined) {
-      const trainer = await getTrainerById(data.trainerId);
-      if (!trainer) {
-        res.status(400).json({ error: `Trainer ${data.trainerId} not found` });
-        return;
-      }
+    const updated = await updateClassSchedule({
+      fitnessClassId: classId,
+      trainerId: data.trainerId,
+      roomId: data.roomId,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      capacity: data.capacity,
+    });
+    
+    // If name changed, update it separately since updateClassSchedule doesn't handle name
+    if (data.name !== undefined) {
+      const finalUpdated = await prisma.fitnessClass.update({
+        where: { id: classId },
+        data: { name: data.name },
+      });
+      res.json(finalUpdated);
+    } else {
+      res.json(updated);
     }
-    
-    // If changing room, validate
-    if (data.roomId !== undefined) {
-      const room = await getRoomById(data.roomId);
-      if (!room) {
-        res.status(400).json({ error: `Room ${data.roomId} not found` });
-        return;
-      }
-    }
-    
-    // Build update payload
-    const updatePayload: any = {};
-    if (data.name !== undefined) updatePayload.name = data.name;
-    if (data.trainerId !== undefined) updatePayload.trainer = { connect: { id: data.trainerId } };
-    if (data.roomId !== undefined) updatePayload.room = { connect: { id: data.roomId } };
-    if (data.startTime !== undefined) updatePayload.startTime = data.startTime;
-    if (data.endTime !== undefined) updatePayload.endTime = data.endTime;
-    if (data.capacity !== undefined) updatePayload.capacity = data.capacity;
-    
-    const updated = await updateFitnessClass(classId, updatePayload);
-    res.json(updated);
   } catch (error) {
     next(error);
   }

@@ -25,6 +25,13 @@ import {
   cancelClassRegistration,
   getMemberRegistrations,
 } from '../../app/classRegistrationService';
+import { registerMemberForClass } from '../../app/groupClassRegistrationService';
+import {
+  getActiveGoalsForMember,
+  getPastClassCountForMember,
+  getUpcomingPtSessionsForMember,
+  getUpcomingClassSessionsForMember,
+} from '../../app/dashboardService';
 
 const router = Router();
 
@@ -198,7 +205,29 @@ router.patch('/:memberId/sessions/:sessionId', async (req, res, next) => {
   }
 });
 
-// ==================== GROUP CLASS REGISTRATION ====================
+// Get dashboard data for member
+router.get('/:memberId/dashboard', async (req, res, next) => {
+  try {
+    const memberId = parseId(req.params.memberId, 'memberId');
+    
+    // Fetch all dashboard data in parallel
+    const [activeGoals, pastClassCount, upcomingPtSessions, upcomingClasses] = await Promise.all([
+      getActiveGoalsForMember(memberId),
+      getPastClassCountForMember(memberId),
+      getUpcomingPtSessionsForMember(memberId),
+      getUpcomingClassSessionsForMember(memberId),
+    ]);
+    
+    res.json({
+      activeGoals,
+      pastClassCount,
+      upcomingPtSessions,
+      upcomingClasses,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // List upcoming classes with registration info for member
 router.get('/:memberId/classes', async (req, res, next) => {
@@ -227,7 +256,7 @@ router.post('/:memberId/class-registrations', async (req, res, next) => {
   try {
     const memberId = parseId(req.params.memberId, 'memberId');
     const fitnessClassId = parseNumericId(req.body?.fitnessClassId, 'fitnessClassId');
-    const registration = await registerForClass(memberId, fitnessClassId);
+    const registration = await registerMemberForClass(memberId, fitnessClassId);
     res.status(201).json(registration);
   } catch (error) {
     next(error);
